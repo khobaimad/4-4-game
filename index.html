@@ -9,17 +9,14 @@
     <link href="https://fonts.googleapis.com/css2?family=Almarai:wght@400;700;800&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root"><div id="loading" style="padding:24px;font-family:sans-serif;color:#555;direction:rtl;text-align:center">جارٍ تحميل اللعبة...</div></div><noscript><div style="padding:24px;font-family:sans-serif;direction:rtl;text-align:center">يلزم تفعيل JavaScript لتشغيل اللعبة.</div></noscript>
 
     <!-- React -->
-    <script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
-    <!-- Babel (in-browser JSX transform, no build step needed) -->
-    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.25.6/babel.min.js"></script>
-
+    <script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js" onerror="window.__fbError='تعذر تحميل React من الإنترنت.'"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js" onerror="window.__fbError='تعذر تحميل React DOM من الإنترنت.'"></script>
     <!-- Firebase (classic "compat" build — avoids ES modules so Babel Standalone can't intercept it) -->
-    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js" onerror="window.dispatchEvent(new CustomEvent('fb-error', { detail: 'تعذر تحميل firebase-app-compat.js من الإنترنت.' }))"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js" onerror="window.dispatchEvent(new CustomEvent('fb-error', { detail: 'تعذر تحميل firebase-firestore-compat.js من الإنترنت.' }))"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js" onerror="window.__fbError='تعذر تحميل firebase-app-compat.js من الإنترنت.'"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js" onerror="window.__fbError='تعذر تحميل firebase-firestore-compat.js من الإنترنت.'"></script>
     <script>
       try {
         var firebaseConfig = {
@@ -75,7 +72,7 @@
         window.fb = { db: fsDb, doc: doc, getDoc: getDoc, setDoc: setDoc, deleteDoc: deleteDoc, onSnapshot: onSnapshot };
         window.dispatchEvent(new Event("fb-ready"));
       } catch (err) {
-        window.dispatchEvent(new CustomEvent("fb-error", { detail: (err && err.message) || String(err) }));
+        window.__fbError = (err && err.message) || String(err);
       }
     </script>
 
@@ -83,7 +80,7 @@
     <script>
       window.addEventListener("error", function (e) {
         var root = document.getElementById("root");
-        if (root && !root.hasChildNodes()) {
+        if (root && document.getElementById("loading")) {
           root.innerHTML =
             '<div style="padding:24px;font-family:sans-serif;color:#a33;direction:rtl;text-align:right">' +
             "حدث خطأ أثناء تحميل اللعبة:<br>" +
@@ -93,471 +90,455 @@
       });
     </script>
 
-    <!-- Game code (JSX transpiled live by Babel — no build tools required) -->
-    <script type="text/babel" data-presets="react">
-      const { useState, useMemo, useEffect, useRef } = React;
-
-      function showBootError(msg) {
-        document.getElementById("root").innerHTML =
-          '<div style="padding:24px;font-family:sans-serif;color:#a33;direction:rtl;text-align:right">' +
-          "تعذر تحميل اللعبة:<br>" + msg +
-          '<div style="font-size:13px;margin-top:10px">تحقق من أن الجهاز يقدر يوصل لمواقع unpkg.com وgstatic.com، أو جرّب متصفح/شبكة ثانية.</div>' +
-          "</div>";
-      }
-
-      function boot(db, doc, getDoc, setDoc, deleteDoc, onSnapshot) {
-
-const N = 4;
-const TOTAL = N * N;
-
-const row = (i) => Math.floor(i / N);
-const col = (i) => i % N;
-
-// ---------------------------------------------------------------------------
-// TRANSLATIONS
-// ---------------------------------------------------------------------------
-const T = {
-  ar: {
-    dir: "rtl",
-    appEyebrow: "لعبة الصف والعمود",
-    appTitle: "خانات ٤×٤",
-    menuIntro:
-      "كل مباراة جولتان: من يبدأ الجولة الأولى يلعب ثانيًا في الجولة الثانية. وإذا فاز كل لاعب بجولة، تنتهي المباراة بالتعادل.",
-    playLocal: "لعب محلي",
-    playOnline: "لعب أونلاين",
-    playAI: "ضد الذكاء الاصطناعي",
-
-    aiIntro: "العب ضد الذكاء الاصطناعي. اختر مستوى الصعوبة قبل البدء.",
-    difficultyLabel: "مستوى الصعوبة",
-    difficultyEasy: "سهل",
-    difficultyMedium: "متوسط",
-    difficultyHard: "صعب",
-    aiName: "الذكاء الاصطناعي",
-    youLabel: "أنت",
-    aiThinking: "الذكاء الاصطناعي يفكر...",
-    whoStartsAI: "من يبدأ الجولة الأولى؟",
-
-    roundLabel: { 1: "الجولة الأولى", 2: "الجولة الثانية" },
-    speedLabel: { bullet: "رصاصة", blitz: "خاطف", rapid: "سريع" },
-    secondsSuffix: "ث",
-    defaultPlayer1: "اللاعب الأول",
-    defaultPlayer2: "اللاعب الثاني",
-    chooseCellsHint: "اختر خانة واحدة أو أكثر متجاورة في صف أو عمود",
-    readyToPlace: (n) => `جاهز لوضع ${n} علامة`,
-    confirmMove: "تأكيد الحركة",
-    clearSelection: "إلغاء الاختيار",
-    roundOverLabel: "انتهت الجولة",
-    turnOf: (name) => `دور: ${name}`,
-    lastMarkBy: (name) => `${name} وضع آخر علامة`,
-    roundWonBy: (name) => `فاز بهذه الجولة ${name}`,
-    secondRound: "الجولة الثانية",
-    winsMatch: (name) => `${name} يفوز بالمباراة`,
-    drawMatch: "انتهت المباراة بالتعادل",
-    drawsLabel: "تعادلات",
-    newMatch: "مباراة جديدة",
-
-    err_selectAtLeastOne: "اختر خانة واحدة أو أكثر لبدء الحركة",
-    err_occupied: "لا يمكن اختيار خانة مشغولة",
-    err_sameLine: "يجب أن تكون كل العلامات في صف واحد أو عمود واحد",
-    err_adjacent: "يجب أن تكون الخانات متجاورة بلا فراغ",
-
-    localIntro: "لعب محلي: نفس الجهاز، دور بعد دور.",
-    player1NameLabel: "اسم اللاعب الأول",
-    player2NameLabel: "اسم اللاعب الثاني",
-    player1Placeholder: "اللاعب الأول",
-    player2Placeholder: "اللاعب الثاني",
-    gameSpeedLabel: "سرعة اللعب",
-    whoStartsLabel: "من يبدأ الجولة الأولى؟",
-    resetScores: "إعادة تصفير النقط",
-    back: "رجوع",
-
-    onlineIntro: "العب أونلاين مع صديق عبر كود غرفة خاص.",
-    yourNameLabel: "اسمك",
-    yourNamePlaceholder: "اسمك",
-    createRoomBtn: "إنشاء غرفة ودعوة صديق",
-    roomCodePlaceholder: "كود الغرفة",
-    joinWithCode: "انضمام بالكود",
-    roomCodeShareLabel: "كود الغرفة، شاركه مع صديقك",
-    copiedLabel: "تم النسخ ✓",
-    copyInviteBtn: "نسخ دعوة للصديق",
-    bothInRoom: (n1, n2) => `${n1} و ${n2} في الغرفة`,
-    waitingFriend: "في انتظار انضمام صديقك بالكود...",
-    leaveRoomBtn: "مغادرة الغرفة",
-    yourTurnLabel: "دورك الآن",
-    waitingMove: (name) => `في انتظار حركة ${name}`,
-
-    errWriteNameFirst: "اكتب اسمك أولًا",
-    errWriteRoomCode: "اكتب كود الغرفة",
-    errRoomNotFound: "الغرفة غير موجودة",
-    errRoomFull: "الغرفة ممتلئة",
-    inviteText: (code) =>
-      `تعال نلعب خانات ٤×٤! افتح اللعبة، اختر "لعب أونلاين" ثم "انضمام بالكود" واكتب: ${code}`,
-
-    authChecking: "جارٍ التحقق...",
-    authIntro: "أنشئ حسابًا لحفظ نتائجك، أو سجّل الدخول، أو العب مباشرة بدون حساب.",
-    authCreateAccount: "إنشاء حساب",
-    authLogin: "تسجيل الدخول",
-    authGuest: "اللعب بدون حساب",
-    authUsername: "اسم المستخدم",
-    authPassword: "كلمة المرور",
-    authDisplayName: "الاسم الظاهر",
-    authGuestNameLabel: "اسمك",
-    authSubmitCreate: "إنشاء الحساب",
-    authSubmitLogin: "دخول",
-    authSubmitGuest: "متابعة",
-    authBackToChoice: "رجوع",
-    authFillAll: "يرجى تعبئة جميع الحقول",
-    authUsernameTaken: "اسم المستخدم مستخدم بالفعل",
-    authAccountNotFound: "الحساب غير موجود",
-    authWrongPassword: "كلمة المرور غير صحيحة",
-    authGenericError: "حدث خطأ، حاول مرة أخرى",
-    authEnterName: "اكتب اسمك",
-    authNote: "حساب بسيط لهذه اللعبة فقط، لا تستخدم كلمة مرور تستخدمها في مكان آخر.",
-    loggedInAs: (name) => `مسجّل الدخول باسم ${name}`,
-    logout: "تسجيل الخروج",
-  },
-  en: {
-    dir: "ltr",
-    appEyebrow: "Row & Column Game",
-    appTitle: "4×4 Squares",
-    menuIntro:
-      "Each match has two rounds: whoever starts round one plays second in round two. If each player wins a round, the match ends in a draw.",
-    playLocal: "Local Play",
-    playOnline: "Play Online",
-    playAI: "Play vs AI",
-
-    aiIntro: "Play against the computer. Pick a difficulty before you start.",
-    difficultyLabel: "Difficulty",
-    difficultyEasy: "Easy",
-    difficultyMedium: "Medium",
-    difficultyHard: "Hard",
-    aiName: "Computer",
-    youLabel: "You",
-    aiThinking: "Computer is thinking...",
-    whoStartsAI: "Who starts round one?",
-
-    roundLabel: { 1: "Round One", 2: "Round Two" },
-    speedLabel: { bullet: "Bullet", blitz: "Blitz", rapid: "Rapid" },
-    secondsSuffix: "s",
-    defaultPlayer1: "Player 1",
-    defaultPlayer2: "Player 2",
-    chooseCellsHint: "Select one or more adjacent cells in a row or column",
-    readyToPlace: (n) => `Ready to place ${n} mark${n > 1 ? "s" : ""}`,
-    confirmMove: "Confirm Move",
-    clearSelection: "Clear Selection",
-    roundOverLabel: "Round Over",
-    turnOf: (name) => `Turn: ${name}`,
-    lastMarkBy: (name) => `${name} placed the last mark`,
-    roundWonBy: (name) => `${name} won this round`,
-    secondRound: "Round Two",
-    winsMatch: (name) => `${name} wins the match`,
-    drawMatch: "The match ended in a draw",
-    drawsLabel: "Draws",
-    newMatch: "New Match",
-
-    err_selectAtLeastOne: "Select one or more cells to start your move",
-    err_occupied: "You can't select an occupied cell",
-    err_sameLine: "All marks must be in a single row or column",
-    err_adjacent: "Cells must be adjacent with no gaps",
-
-    localIntro: "Local play: same device, turn by turn.",
-    player1NameLabel: "Player 1 Name",
-    player2NameLabel: "Player 2 Name",
-    player1Placeholder: "Player 1",
-    player2Placeholder: "Player 2",
-    gameSpeedLabel: "Game Speed",
-    whoStartsLabel: "Who starts round one?",
-    resetScores: "Reset Score",
-    back: "Back",
-
-    onlineIntro: "Play online with a friend using a private room code.",
-    yourNameLabel: "Your Name",
-    yourNamePlaceholder: "Your name",
-    createRoomBtn: "Create Room & Invite a Friend",
-    roomCodePlaceholder: "Room Code",
-    joinWithCode: "Join with Code",
-    roomCodeShareLabel: "Room code, share it with your friend",
-    copiedLabel: "Copied ✓",
-    copyInviteBtn: "Copy Invite for Friend",
-    bothInRoom: (n1, n2) => `${n1} and ${n2} are in the room`,
-    waitingFriend: "Waiting for your friend to join with the code...",
-    leaveRoomBtn: "Leave Room",
-    yourTurnLabel: "Your turn",
-    waitingMove: (name) => `Waiting for ${name}'s move`,
-
-    errWriteNameFirst: "Enter your name first",
-    errWriteRoomCode: "Enter the room code",
-    errRoomNotFound: "Room not found",
-    errRoomFull: "Room is full",
-    inviteText: (code) =>
-      `Come play 4x4 Squares! Open the game, choose "Play Online" then "Join with Code" and type: ${code}`,
-
-    authChecking: "Checking...",
-    authIntro: "Create an account to save your record, log in, or just play as a guest.",
-    authCreateAccount: "Create Account",
-    authLogin: "Log In",
-    authGuest: "Play Without an Account",
-    authUsername: "Username",
-    authPassword: "Password",
-    authDisplayName: "Display Name",
-    authGuestNameLabel: "Your Name",
-    authSubmitCreate: "Create Account",
-    authSubmitLogin: "Log In",
-    authSubmitGuest: "Continue",
-    authBackToChoice: "Back",
-    authFillAll: "Please fill in all fields",
-    authUsernameTaken: "This username is already taken",
-    authAccountNotFound: "Account not found",
-    authWrongPassword: "Incorrect password",
-    authGenericError: "Something went wrong, please try again",
-    authEnterName: "Enter your name",
-    authNote: "A simple account for this game only — don't reuse a password from elsewhere.",
-    loggedInAs: (name) => `Logged in as ${name}`,
-    logout: "Log Out",
-  },
-};
-
-function analyzeSelection(selected, board, lang) {
-  const t = T[lang];
-  if (!board || selected.length === 0) {
-    return { valid: false, reason: t.err_selectAtLeastOne };
-  }
-  for (const i of selected) {
-    if (board[i]) return { valid: false, reason: t.err_occupied };
-  }
-  const rows = new Set(selected.map(row));
-  const cols = new Set(selected.map(col));
-
-  if (rows.size > 1 && cols.size > 1) {
-    return { valid: false, reason: t.err_sameLine };
-  }
-
-  if (rows.size === 1) {
-    const sorted = [...selected].sort((a, b) => col(a) - col(b));
-    for (let k = 1; k < sorted.length; k++) {
-      const gap = col(sorted[k]) - col(sorted[k - 1]);
-      if (gap !== 1) return { valid: false, reason: t.err_adjacent };
-    }
-  } else {
-    const sorted = [...selected].sort((a, b) => row(a) - row(b));
-    for (let k = 1; k < sorted.length; k++) {
-      const gap = row(sorted[k]) - row(sorted[k - 1]);
-      if (gap !== 1) return { valid: false, reason: t.err_adjacent };
-    }
-  }
-
-  return { valid: true, reason: "" };
-}
-
-// Game 1: chosen starter. Game 2: the other player. Decider (game 3): chosen starter again.
-function starterFor(gameIndex, initialStarter) {
-  const other = initialStarter === 1 ? 2 : 1;
-  if (gameIndex === 2) return other;
-  return initialStarter;
-}
-
-// ---------------------------------------------------------------------------
-// AI ENGINE
-// This is a "last to move loses" combinatorial game: a move fills one or
-// more currently-empty, adjacent cells in a single row or column. Since
-// legality never depends on *who* owns a filled cell (only whether it's
-// filled), the game is impartial — its outcome from any position depends
-// only on which cells are empty, not on move history. That lets us solve it
-// exactly with memoized recursion over the 16-bit "empty cells" bitmask.
-// ---------------------------------------------------------------------------
-const FULL_MASK = (1 << TOTAL) - 1;
-
-function movesFromMask(mask) {
-  // mask: bits set = OCCUPIED. Returns array of resulting masks after each
-  // legal move (each move fills a contiguous run of currently-empty cells
-  // within a single row or column).
-  const moves = [];
-  const addRunMoves = (cells) => {
-    // cells: ordered list of board indices for one row or column
-    let start = 0;
-    while (start < cells.length) {
-      if (mask & (1 << cells[start])) {
-        start++;
-        continue;
-      }
-      let end = start;
-      while (end < cells.length && !(mask & (1 << cells[end]))) end++;
-      // empty run is cells[start..end-1]; every contiguous sub-run is a legal move
-      for (let a = start; a < end; a++) {
-        let bits = 0;
-        for (let b = a; b < end; b++) {
-          bits |= 1 << cells[b];
-          moves.push(mask | bits);
+    <script>
+      setTimeout(function () {
+        var l = document.getElementById("loading");
+        if (l) {
+          l.innerHTML = (window.__fbError || "تعذر تشغيل اللعبة.") + "<br><small>تحقق من اتصال الإنترنت أو جرّب متصفحًا/شبكة أخرى.</small>";
+          l.style.color = "#a33";
         }
-      }
-      start = end;
-    }
-  };
-  for (let r = 0; r < N; r++) {
-    const cells = [];
-    for (let c = 0; c < N; c++) cells.push(r * N + c);
-    addRunMoves(cells);
-  }
-  for (let c = 0; c < N; c++) {
-    const cells = [];
-    for (let r = 0; r < N; r++) cells.push(r * N + c);
-    addRunMoves(cells);
-  }
-  return moves;
+      }, 10000);
+    </script>
+
+    <!-- Game code (precompiled, no Babel needed) -->
+    <script>
+"use strict";
+const { useState, useMemo, useEffect, useRef } = React;
+function showBootError(msg) {
+    document.getElementById("root").innerHTML =
+        '<div style="padding:24px;font-family:sans-serif;color:#a33;direction:rtl;text-align:right">' +
+            "تعذر تحميل اللعبة:<br>" + msg +
+            '<div style="font-size:13px;margin-top:10px">تحقق من أن الجهاز يقدر يوصل لمواقع cdn.jsdelivr.net وgstatic.com، أو جرّب متصفح/شبكة ثانية.</div>' +
+            "</div>";
 }
-
-function maskToMove(prevMask, newMask) {
-  const diff = prevMask ^ newMask;
-  const cells = [];
-  for (let i = 0; i < TOTAL; i++) if (diff & (1 << i)) cells.push(i);
-  return cells;
-}
-
-const solveMemo = new Map();
-function solve(mask) {
-  // Returns true if the player about to move from `mask` can force the
-  // OPPONENT to place the last mark (i.e. can force a win).
-  if (solveMemo.has(mask)) return solveMemo.get(mask);
-  let winFound = false;
-  const nextMasks = movesFromMask(mask);
-  for (const nm of nextMasks) {
-    if (nm === FULL_MASK) continue; // this move loses immediately for the mover
-    if (!solve(nm)) {
-      winFound = true;
-      break;
-    }
-  }
-  solveMemo.set(mask, winFound);
-  return winFound;
-}
-
-function boardToMask(board) {
-  let mask = 0;
-  for (let i = 0; i < TOTAL; i++) if (board[i]) mask |= 1 << i;
-  return mask;
-}
-
-function bestAIMoves(board) {
-  // Returns { winning: [cellArrays...], losing: [cellArrays...] } from the
-  // current position — winning = moves that leave the opponent losing.
-  const mask = boardToMask(board);
-  const nextMasks = movesFromMask(mask);
-  const winning = [];
-  const losing = [];
-  for (const nm of nextMasks) {
-    const move = maskToMove(mask, nm);
-    if (nm === FULL_MASK || solve(nm)) {
-      losing.push(move); // leaves opponent (or self) in/forced-toward a losing spot for the mover
-    } else {
-      winning.push(move);
-    }
-  }
-  return { winning, losing };
-}
-
-const SPEED_SECONDS = { bullet: 5, blitz: 10, rapid: 30 };
-
-function chooseAIMove(board, difficulty) {
-  const { winning, losing } = bestAIMoves(board);
-  const optimalPool = winning.length > 0 ? winning : losing;
-  const allMoves = [...winning, ...losing];
-  const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
-
-  const optimalChance = difficulty === "hard" ? 1 : difficulty === "medium" ? 0.7 : 0.2;
-  if (Math.random() < optimalChance) {
-    return pickRandom(optimalPool);
-  }
-  return pickRandom(allMoves);
-}
-
-
-const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
-function genCode() {
-  let s = "";
-  for (let i = 0; i < 4; i++) s += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
-  return s;
-}
-
-function emptyRoom() {
-  return {
-    players: { 1: "", 2: "" },
-    speed: "blitz",
-    initialStarter: 1,
-    gameIndex: 1,
-    matchScore: { 1: 0, 2: 0 },
-    wins: { 1: 0, 2: 0, draws: 0 },
-    board: Array(TOTAL).fill(null),
-    current: 1,
-    roundLoser: null,
-    lastMove: [],
-    turnDeadline: null,
-    stage: "lobby",
-  };
-}
-
-async function readRoom(code) {
-  try {
-    const snap = await getDoc(doc(db, "rooms", code));
-    return snap.exists() ? snap.data() : null;
-  } catch (e) {
-    return null;
-  }
-}
-
-async function writeRoom(code, obj) {
-  try {
-    await setDoc(doc(db, "rooms", code), obj);
-  } catch (e) {
-    // ignore persistence failure
-  }
-}
-
-function withGmBadge(name) {
-  if (name && name.trim().toLowerCase() === "imad lite") {
-    return name.trim() + " 👑GM";
-  }
-  return name;
-}
-
-function App() {
-  const [mode, setMode] = useState(null); // null | local | online
-  const [lang, setLang] = useState("ar");
-  const t = T[lang];
-
-  const [session, setSession] = useState(null); // null | { type: 'account'|'guest', name, username? }
-  const [sessionChecked, setSessionChecked] = useState(false);
-
-  // on load, see if this browser already has a remembered account login
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("logged-in-account");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.username && parsed.displayName) {
-          setSession({ type: "account", name: parsed.displayName, username: parsed.username });
+function boot(db, doc, getDoc, setDoc, deleteDoc, onSnapshot) {
+    const N = 4;
+    const TOTAL = N * N;
+    const row = (i) => Math.floor(i / N);
+    const col = (i) => i % N;
+    // ---------------------------------------------------------------------------
+    // TRANSLATIONS
+    // ---------------------------------------------------------------------------
+    const T = {
+        ar: {
+            dir: "rtl",
+            appEyebrow: "لعبة الصف والعمود",
+            appTitle: "خانات ٤×٤",
+            menuIntro: "كل مباراة جولتان: من يبدأ الجولة الأولى يلعب ثانيًا في الجولة الثانية. وإذا فاز كل لاعب بجولة، تنتهي المباراة بالتعادل.",
+            playLocal: "لعب محلي",
+            playOnline: "لعب أونلاين",
+            playAI: "ضد الذكاء الاصطناعي",
+            aiIntro: "العب ضد الذكاء الاصطناعي. اختر مستوى الصعوبة قبل البدء.",
+            difficultyLabel: "مستوى الصعوبة",
+            difficultyEasy: "سهل",
+            difficultyMedium: "متوسط",
+            difficultyHard: "صعب",
+            aiName: "الذكاء الاصطناعي",
+            youLabel: "أنت",
+            aiThinking: "الذكاء الاصطناعي يفكر...",
+            whoStartsAI: "من يبدأ الجولة الأولى؟",
+            roundLabel: { 1: "الجولة الأولى", 2: "الجولة الثانية" },
+            speedLabel: { bullet: "رصاصة", blitz: "خاطف", rapid: "سريع" },
+            secondsSuffix: "ث",
+            defaultPlayer1: "اللاعب الأول",
+            defaultPlayer2: "اللاعب الثاني",
+            chooseCellsHint: "اختر خانة واحدة أو أكثر متجاورة في صف أو عمود",
+            readyToPlace: (n) => `جاهز لوضع ${n} علامة`,
+            confirmMove: "تأكيد الحركة",
+            clearSelection: "إلغاء الاختيار",
+            roundOverLabel: "انتهت الجولة",
+            turnOf: (name) => `دور: ${name}`,
+            lastMarkBy: (name) => `${name} وضع آخر علامة`,
+            roundWonBy: (name) => `فاز بهذه الجولة ${name}`,
+            secondRound: "الجولة الثانية",
+            winsMatch: (name) => `${name} يفوز بالمباراة`,
+            drawMatch: "انتهت المباراة بالتعادل",
+            drawsLabel: "تعادلات",
+            newMatch: "مباراة جديدة",
+            err_selectAtLeastOne: "اختر خانة واحدة أو أكثر لبدء الحركة",
+            err_occupied: "لا يمكن اختيار خانة مشغولة",
+            err_sameLine: "يجب أن تكون كل العلامات في صف واحد أو عمود واحد",
+            err_adjacent: "يجب أن تكون الخانات متجاورة بلا فراغ",
+            localIntro: "لعب محلي: نفس الجهاز، دور بعد دور.",
+            player1NameLabel: "اسم اللاعب الأول",
+            player2NameLabel: "اسم اللاعب الثاني",
+            player1Placeholder: "اللاعب الأول",
+            player2Placeholder: "اللاعب الثاني",
+            gameSpeedLabel: "سرعة اللعب",
+            whoStartsLabel: "من يبدأ الجولة الأولى؟",
+            resetScores: "إعادة تصفير النقط",
+            back: "رجوع",
+            onlineIntro: "العب أونلاين مع صديق عبر كود غرفة خاص.",
+            yourNameLabel: "اسمك",
+            yourNamePlaceholder: "اسمك",
+            createRoomBtn: "إنشاء غرفة ودعوة صديق",
+            roomCodePlaceholder: "كود الغرفة",
+            joinWithCode: "انضمام بالكود",
+            roomCodeShareLabel: "كود الغرفة، شاركه مع صديقك",
+            copiedLabel: "تم النسخ ✓",
+            copyInviteBtn: "نسخ دعوة للصديق",
+            bothInRoom: (n1, n2) => `${n1} و ${n2} في الغرفة`,
+            waitingFriend: "في انتظار انضمام صديقك بالكود...",
+            leaveRoomBtn: "مغادرة الغرفة",
+            yourTurnLabel: "دورك الآن",
+            waitingMove: (name) => `في انتظار حركة ${name}`,
+            errWriteNameFirst: "اكتب اسمك أولًا",
+            errWriteRoomCode: "اكتب كود الغرفة",
+            errRoomNotFound: "الغرفة غير موجودة",
+            errRoomFull: "الغرفة ممتلئة",
+            inviteText: (code) => `تعال نلعب خانات ٤×٤! افتح اللعبة، اختر "لعب أونلاين" ثم "انضمام بالكود" واكتب: ${code}`,
+            authChecking: "جارٍ التحقق...",
+            authIntro: "أنشئ حسابًا لحفظ نتائجك، أو سجّل الدخول، أو العب مباشرة بدون حساب.",
+            authCreateAccount: "إنشاء حساب",
+            authLogin: "تسجيل الدخول",
+            authGuest: "اللعب بدون حساب",
+            authUsername: "اسم المستخدم",
+            authPassword: "كلمة المرور",
+            authDisplayName: "الاسم الظاهر",
+            authGuestNameLabel: "اسمك",
+            authSubmitCreate: "إنشاء الحساب",
+            authSubmitLogin: "دخول",
+            authSubmitGuest: "متابعة",
+            authBackToChoice: "رجوع",
+            authFillAll: "يرجى تعبئة جميع الحقول",
+            authUsernameTaken: "اسم المستخدم مستخدم بالفعل",
+            authAccountNotFound: "الحساب غير موجود",
+            authWrongPassword: "كلمة المرور غير صحيحة",
+            authGenericError: "حدث خطأ، حاول مرة أخرى",
+            authEnterName: "اكتب اسمك",
+            authNote: "حساب بسيط لهذه اللعبة فقط، لا تستخدم كلمة مرور تستخدمها في مكان آخر.",
+            loggedInAs: (name) => `مسجّل الدخول باسم ${name}`,
+            logout: "تسجيل الخروج",
+        },
+        en: {
+            dir: "ltr",
+            appEyebrow: "Row & Column Game",
+            appTitle: "4×4 Squares",
+            menuIntro: "Each match has two rounds: whoever starts round one plays second in round two. If each player wins a round, the match ends in a draw.",
+            playLocal: "Local Play",
+            playOnline: "Play Online",
+            playAI: "Play vs AI",
+            aiIntro: "Play against the computer. Pick a difficulty before you start.",
+            difficultyLabel: "Difficulty",
+            difficultyEasy: "Easy",
+            difficultyMedium: "Medium",
+            difficultyHard: "Hard",
+            aiName: "Computer",
+            youLabel: "You",
+            aiThinking: "Computer is thinking...",
+            whoStartsAI: "Who starts round one?",
+            roundLabel: { 1: "Round One", 2: "Round Two" },
+            speedLabel: { bullet: "Bullet", blitz: "Blitz", rapid: "Rapid" },
+            secondsSuffix: "s",
+            defaultPlayer1: "Player 1",
+            defaultPlayer2: "Player 2",
+            chooseCellsHint: "Select one or more adjacent cells in a row or column",
+            readyToPlace: (n) => `Ready to place ${n} mark${n > 1 ? "s" : ""}`,
+            confirmMove: "Confirm Move",
+            clearSelection: "Clear Selection",
+            roundOverLabel: "Round Over",
+            turnOf: (name) => `Turn: ${name}`,
+            lastMarkBy: (name) => `${name} placed the last mark`,
+            roundWonBy: (name) => `${name} won this round`,
+            secondRound: "Round Two",
+            winsMatch: (name) => `${name} wins the match`,
+            drawMatch: "The match ended in a draw",
+            drawsLabel: "Draws",
+            newMatch: "New Match",
+            err_selectAtLeastOne: "Select one or more cells to start your move",
+            err_occupied: "You can't select an occupied cell",
+            err_sameLine: "All marks must be in a single row or column",
+            err_adjacent: "Cells must be adjacent with no gaps",
+            localIntro: "Local play: same device, turn by turn.",
+            player1NameLabel: "Player 1 Name",
+            player2NameLabel: "Player 2 Name",
+            player1Placeholder: "Player 1",
+            player2Placeholder: "Player 2",
+            gameSpeedLabel: "Game Speed",
+            whoStartsLabel: "Who starts round one?",
+            resetScores: "Reset Score",
+            back: "Back",
+            onlineIntro: "Play online with a friend using a private room code.",
+            yourNameLabel: "Your Name",
+            yourNamePlaceholder: "Your name",
+            createRoomBtn: "Create Room & Invite a Friend",
+            roomCodePlaceholder: "Room Code",
+            joinWithCode: "Join with Code",
+            roomCodeShareLabel: "Room code, share it with your friend",
+            copiedLabel: "Copied ✓",
+            copyInviteBtn: "Copy Invite for Friend",
+            bothInRoom: (n1, n2) => `${n1} and ${n2} are in the room`,
+            waitingFriend: "Waiting for your friend to join with the code...",
+            leaveRoomBtn: "Leave Room",
+            yourTurnLabel: "Your turn",
+            waitingMove: (name) => `Waiting for ${name}'s move`,
+            errWriteNameFirst: "Enter your name first",
+            errWriteRoomCode: "Enter the room code",
+            errRoomNotFound: "Room not found",
+            errRoomFull: "Room is full",
+            inviteText: (code) => `Come play 4x4 Squares! Open the game, choose "Play Online" then "Join with Code" and type: ${code}`,
+            authChecking: "Checking...",
+            authIntro: "Create an account to save your record, log in, or just play as a guest.",
+            authCreateAccount: "Create Account",
+            authLogin: "Log In",
+            authGuest: "Play Without an Account",
+            authUsername: "Username",
+            authPassword: "Password",
+            authDisplayName: "Display Name",
+            authGuestNameLabel: "Your Name",
+            authSubmitCreate: "Create Account",
+            authSubmitLogin: "Log In",
+            authSubmitGuest: "Continue",
+            authBackToChoice: "Back",
+            authFillAll: "Please fill in all fields",
+            authUsernameTaken: "This username is already taken",
+            authAccountNotFound: "Account not found",
+            authWrongPassword: "Incorrect password",
+            authGenericError: "Something went wrong, please try again",
+            authEnterName: "Enter your name",
+            authNote: "A simple account for this game only — don't reuse a password from elsewhere.",
+            loggedInAs: (name) => `Logged in as ${name}`,
+            logout: "Log Out",
+        },
+    };
+    function analyzeSelection(selected, board, lang) {
+        const t = T[lang];
+        if (!board || selected.length === 0) {
+            return { valid: false, reason: t.err_selectAtLeastOne };
         }
-      }
-    } catch (e) {
-      // no remembered login, that's fine
-    } finally {
-      setSessionChecked(true);
+        for (const i of selected) {
+            if (board[i])
+                return { valid: false, reason: t.err_occupied };
+        }
+        const rows = new Set(selected.map(row));
+        const cols = new Set(selected.map(col));
+        if (rows.size > 1 && cols.size > 1) {
+            return { valid: false, reason: t.err_sameLine };
+        }
+        if (rows.size === 1) {
+            const sorted = [...selected].sort((a, b) => col(a) - col(b));
+            for (let k = 1; k < sorted.length; k++) {
+                const gap = col(sorted[k]) - col(sorted[k - 1]);
+                if (gap !== 1)
+                    return { valid: false, reason: t.err_adjacent };
+            }
+        }
+        else {
+            const sorted = [...selected].sort((a, b) => row(a) - row(b));
+            for (let k = 1; k < sorted.length; k++) {
+                const gap = row(sorted[k]) - row(sorted[k - 1]);
+                if (gap !== 1)
+                    return { valid: false, reason: t.err_adjacent };
+            }
+        }
+        return { valid: true, reason: "" };
     }
-  }, []);
-
-  function logout() {
-    setSession(null);
-    setMode(null);
-    try {
-      localStorage.removeItem("logged-in-account");
-    } catch (e) {
-      // ignore
+    // Game 1: chosen starter. Game 2: the other player. Decider (game 3): chosen starter again.
+    function starterFor(gameIndex, initialStarter) {
+        const other = initialStarter === 1 ? 2 : 1;
+        if (gameIndex === 2)
+            return other;
+        return initialStarter;
     }
-  }
-
-  return (
-    <div style={styles.page} dir={t.dir}>
-      <style>{`
+    // ---------------------------------------------------------------------------
+    // AI ENGINE
+    // This is a "last to move loses" combinatorial game: a move fills one or
+    // more currently-empty, adjacent cells in a single row or column. Since
+    // legality never depends on *who* owns a filled cell (only whether it's
+    // filled), the game is impartial — its outcome from any position depends
+    // only on which cells are empty, not on move history. That lets us solve it
+    // exactly with memoized recursion over the 16-bit "empty cells" bitmask.
+    // ---------------------------------------------------------------------------
+    const FULL_MASK = (1 << TOTAL) - 1;
+    function movesFromMask(mask) {
+        // mask: bits set = OCCUPIED. Returns array of resulting masks after each
+        // legal move (each move fills a contiguous run of currently-empty cells
+        // within a single row or column).
+        const moves = [];
+        const addRunMoves = (cells) => {
+            // cells: ordered list of board indices for one row or column
+            let start = 0;
+            while (start < cells.length) {
+                if (mask & (1 << cells[start])) {
+                    start++;
+                    continue;
+                }
+                let end = start;
+                while (end < cells.length && !(mask & (1 << cells[end])))
+                    end++;
+                // empty run is cells[start..end-1]; every contiguous sub-run is a legal move
+                for (let a = start; a < end; a++) {
+                    let bits = 0;
+                    for (let b = a; b < end; b++) {
+                        bits |= 1 << cells[b];
+                        moves.push(mask | bits);
+                    }
+                }
+                start = end;
+            }
+        };
+        for (let r = 0; r < N; r++) {
+            const cells = [];
+            for (let c = 0; c < N; c++)
+                cells.push(r * N + c);
+            addRunMoves(cells);
+        }
+        for (let c = 0; c < N; c++) {
+            const cells = [];
+            for (let r = 0; r < N; r++)
+                cells.push(r * N + c);
+            addRunMoves(cells);
+        }
+        return moves;
+    }
+    function maskToMove(prevMask, newMask) {
+        const diff = prevMask ^ newMask;
+        const cells = [];
+        for (let i = 0; i < TOTAL; i++)
+            if (diff & (1 << i))
+                cells.push(i);
+        return cells;
+    }
+    const solveMemo = new Map();
+    function solve(mask) {
+        // Returns true if the player about to move from `mask` can force the
+        // OPPONENT to place the last mark (i.e. can force a win).
+        if (solveMemo.has(mask))
+            return solveMemo.get(mask);
+        let winFound = false;
+        const nextMasks = movesFromMask(mask);
+        for (const nm of nextMasks) {
+            if (nm === FULL_MASK)
+                continue; // this move loses immediately for the mover
+            if (!solve(nm)) {
+                winFound = true;
+                break;
+            }
+        }
+        solveMemo.set(mask, winFound);
+        return winFound;
+    }
+    function boardToMask(board) {
+        let mask = 0;
+        for (let i = 0; i < TOTAL; i++)
+            if (board[i])
+                mask |= 1 << i;
+        return mask;
+    }
+    function bestAIMoves(board) {
+        // Returns { winning: [cellArrays...], losing: [cellArrays...] } from the
+        // current position — winning = moves that leave the opponent losing.
+        const mask = boardToMask(board);
+        const nextMasks = movesFromMask(mask);
+        const winning = [];
+        const losing = [];
+        for (const nm of nextMasks) {
+            const move = maskToMove(mask, nm);
+            if (nm === FULL_MASK || solve(nm)) {
+                losing.push(move); // leaves opponent (or self) in/forced-toward a losing spot for the mover
+            }
+            else {
+                winning.push(move);
+            }
+        }
+        return { winning, losing };
+    }
+    const SPEED_SECONDS = { bullet: 5, blitz: 10, rapid: 30 };
+    function chooseAIMove(board, difficulty) {
+        const { winning, losing } = bestAIMoves(board);
+        const optimalPool = winning.length > 0 ? winning : losing;
+        const allMoves = [...winning, ...losing];
+        const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
+        const optimalChance = difficulty === "hard" ? 1 : difficulty === "medium" ? 0.7 : 0.2;
+        if (Math.random() < optimalChance) {
+            return pickRandom(optimalPool);
+        }
+        return pickRandom(allMoves);
+    }
+    const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    function genCode() {
+        let s = "";
+        for (let i = 0; i < 4; i++)
+            s += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+        return s;
+    }
+    function emptyRoom() {
+        return {
+            players: { 1: "", 2: "" },
+            speed: "blitz",
+            initialStarter: 1,
+            gameIndex: 1,
+            matchScore: { 1: 0, 2: 0 },
+            wins: { 1: 0, 2: 0, draws: 0 },
+            board: Array(TOTAL).fill(null),
+            current: 1,
+            roundLoser: null,
+            lastMove: [],
+            turnDeadline: null,
+            stage: "lobby",
+        };
+    }
+    async function readRoom(code) {
+        try {
+            const snap = await getDoc(doc(db, "rooms", code));
+            return snap.exists() ? snap.data() : null;
+        }
+        catch (e) {
+            return null;
+        }
+    }
+    async function writeRoom(code, obj) {
+        try {
+            await setDoc(doc(db, "rooms", code), obj);
+            return true;
+        }
+        catch (e) {
+            console.error("Firestore write failed:", e);
+            return false;
+        }
+    }
+    function withGmBadge(name) {
+        if (name && name.trim().toLowerCase() === "imad lite") {
+            return name.trim() + " 👑GM";
+        }
+        return name;
+    }
+    function App() {
+        const [mode, setMode] = useState(null); // null | local | online
+        const [lang, setLang] = useState("ar");
+        const t = T[lang];
+        const [session, setSession] = useState(null); // null | { type: 'account'|'guest', name, username? }
+        const [sessionChecked, setSessionChecked] = useState(false);
+        // on load, see if this browser already has a remembered account login
+        useEffect(() => {
+            try {
+                const raw = localStorage.getItem("logged-in-account");
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (parsed && parsed.username && parsed.displayName) {
+                        setSession({ type: "account", name: parsed.displayName, username: parsed.username });
+                    }
+                }
+            }
+            catch (e) {
+                // no remembered login, that's fine
+            }
+            finally {
+                setSessionChecked(true);
+            }
+        }, []);
+        function logout() {
+            setSession(null);
+            setMode(null);
+            try {
+                localStorage.removeItem("logged-in-account");
+            }
+            catch (e) {
+                // ignore
+            }
+        }
+        return (React.createElement("div", { style: styles.page, dir: t.dir },
+            React.createElement("style", null, `
         * { box-sizing: border-box; }
         body { margin: 0; }
         .cell {
@@ -577,1686 +558,1165 @@ function App() {
         @media (prefers-reduced-motion: reduce) {
           .cell, button { transition: none !important; }
         }
-      `}</style>
-
-      <div style={styles.frame}>
-        <div style={styles.langRow}>
-          <button style={styles.langBtn(lang === "ar")} onClick={() => setLang("ar")}>
-            العربية
-          </button>
-          <button style={styles.langBtn(lang === "en")} onClick={() => setLang("en")}>
-            English
-          </button>
-        </div>
-
-        <div style={styles.eyebrow}>{t.appEyebrow}</div>
-        <h1 style={styles.title}>{t.appTitle}</h1>
-
-        {!sessionChecked && (
-          <div style={styles.card}>
-            <div style={styles.introText}>{t.authChecking}</div>
-          </div>
-        )}
-
-        {sessionChecked && session === null && <AuthScreen t={t} onSessionReady={setSession} />}
-
-        {sessionChecked && session !== null && mode === null && (
-          <div style={styles.card}>
-            <div style={styles.smallNote}>{t.loggedInAs(withGmBadge(session.name))}</div>
-            <p style={styles.introText}>{t.menuIntro}</p>
-            <div style={styles.row}>
-              <button style={{ ...styles.bigBtn, ...styles.p1Btn }} onClick={() => setMode("local")}>
-                {t.playLocal}
-              </button>
-              <button style={{ ...styles.bigBtn, ...styles.p2Btn }} onClick={() => setMode("online")}>
-                {t.playOnline}
-              </button>
-            </div>
-            <div style={styles.row}>
-              <button style={{ ...styles.bigBtn, ...styles.neutralBtn }} onClick={() => setMode("ai")}>
-                {t.playAI}
-              </button>
-            </div>
-            <button style={styles.linkBtn} onClick={logout}>
-              {t.logout}
-            </button>
-          </div>
-        )}
-
-        {sessionChecked && session !== null && mode === "local" && (
-          <LocalGame onBack={() => setMode(null)} lang={lang} session={session} />
-        )}
-        {sessionChecked && session !== null && mode === "online" && (
-          <OnlineGame onBack={() => setMode(null)} lang={lang} session={session} />
-        )}
-        {sessionChecked && session !== null && mode === "ai" && (
-          <AIGame onBack={() => setMode(null)} lang={lang} session={session} />
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// AUTH SCREEN — create account, log in, or continue as guest
-// ---------------------------------------------------------------------------
-function AuthScreen({ t, onSessionReady }) {
-  const [screen, setScreen] = useState("choice"); // choice | create | login | guest
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [guestName, setGuestName] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  function resetFields() {
-    setUsername("");
-    setPassword("");
-    setDisplayName("");
-    setGuestName("");
-    setError("");
-  }
-
-  function goTo(next) {
-    resetFields();
-    setScreen(next);
-  }
-
-  async function handleCreateAccount() {
-    if (!username.trim() || !password.trim() || !displayName.trim()) {
-      setError(t.authFillAll);
-      return;
+      `),
+            React.createElement("div", { style: styles.frame },
+                React.createElement("div", { style: styles.langRow },
+                    React.createElement("button", { style: styles.langBtn(lang === "ar"), onClick: () => setLang("ar") }, "\u0627\u0644\u0639\u0631\u0628\u064A\u0629"),
+                    React.createElement("button", { style: styles.langBtn(lang === "en"), onClick: () => setLang("en") }, "English")),
+                React.createElement("div", { style: styles.eyebrow }, t.appEyebrow),
+                React.createElement("h1", { style: styles.title }, t.appTitle),
+                !sessionChecked && (React.createElement("div", { style: styles.card },
+                    React.createElement("div", { style: styles.introText }, t.authChecking))),
+                sessionChecked && session === null && React.createElement(AuthScreen, { t: t, onSessionReady: setSession }),
+                sessionChecked && session !== null && mode === null && (React.createElement("div", { style: styles.card },
+                    React.createElement("div", { style: styles.smallNote }, t.loggedInAs(withGmBadge(session.name))),
+                    React.createElement("p", { style: styles.introText }, t.menuIntro),
+                    React.createElement("div", { style: styles.row },
+                        React.createElement("button", { style: { ...styles.bigBtn, ...styles.p1Btn }, onClick: () => setMode("local") }, t.playLocal),
+                        React.createElement("button", { style: { ...styles.bigBtn, ...styles.p2Btn }, onClick: () => setMode("online") }, t.playOnline)),
+                    React.createElement("div", { style: styles.row },
+                        React.createElement("button", { style: { ...styles.bigBtn, ...styles.neutralBtn }, onClick: () => setMode("ai") }, t.playAI)),
+                    React.createElement("button", { style: styles.linkBtn, onClick: logout }, t.logout))),
+                sessionChecked && session !== null && mode === "local" && (React.createElement(LocalGame, { onBack: () => setMode(null), lang: lang, session: session })),
+                sessionChecked && session !== null && mode === "online" && (React.createElement(OnlineGame, { onBack: () => setMode(null), lang: lang, session: session })),
+                sessionChecked && session !== null && mode === "ai" && (React.createElement(AIGame, { onBack: () => setMode(null), lang: lang, session: session })))));
     }
-    setBusy(true);
-    const accountId = username.trim().toLowerCase();
-    let existing = null;
-    try {
-      const snap = await getDoc(doc(db, "accounts", accountId));
-      existing = snap.exists() ? snap.data() : null;
-    } catch (e) {
-      setError(t.authGenericError);
-      setBusy(false);
-      return;
-    }
-    if (existing) {
-      setError(t.authUsernameTaken);
-      setBusy(false);
-      return;
-    }
-    try {
-      await setDoc(doc(db, "accounts", accountId), {
-        username: username.trim(),
-        password,
-        displayName: displayName.trim(),
-      });
-      localStorage.setItem(
-        "logged-in-account",
-        JSON.stringify({ username: username.trim(), displayName: displayName.trim() })
-      );
-    } catch (e) {
-      setError(t.authGenericError);
-      setBusy(false);
-      return;
-    }
-    setBusy(false);
-    onSessionReady({ type: "account", name: displayName.trim(), username: username.trim() });
-  }
-
-  async function handleLogin() {
-    if (!username.trim() || !password.trim()) {
-      setError(t.authFillAll);
-      return;
-    }
-    setBusy(true);
-    const accountId = username.trim().toLowerCase();
-    let account = null;
-    try {
-      const snap = await getDoc(doc(db, "accounts", accountId));
-      account = snap.exists() ? snap.data() : null;
-    } catch (e) {
-      account = null;
-    }
-    if (!account) {
-      setError(t.authAccountNotFound);
-      setBusy(false);
-      return;
-    }
-    if (account.password !== password) {
-      setError(t.authWrongPassword);
-      setBusy(false);
-      return;
-    }
-    try {
-      localStorage.setItem(
-        "logged-in-account",
-        JSON.stringify({ username: account.username, displayName: account.displayName })
-      );
-    } catch (e) {
-      // ignore persistence failure, session still works for this visit
-    }
-    setBusy(false);
-    onSessionReady({ type: "account", name: account.displayName, username: account.username });
-  }
-
-  function handleGuest() {
-    if (!guestName.trim()) {
-      setError(t.authEnterName);
-      return;
-    }
-    onSessionReady({ type: "guest", name: guestName.trim() });
-  }
-
-  if (screen === "choice") {
-    return (
-      <div style={styles.card}>
-        <p style={styles.introText}>{t.authIntro}</p>
-        <div style={styles.row}>
-          <button style={{ ...styles.bigBtn, ...styles.p1Btn }} onClick={() => goTo("create")}>
-            {t.authCreateAccount}
-          </button>
-          <button style={{ ...styles.bigBtn, ...styles.p2Btn }} onClick={() => goTo("login")}>
-            {t.authLogin}
-          </button>
-        </div>
-        <div style={styles.row}>
-          <button style={{ ...styles.bigBtn, ...styles.neutralBtn }} onClick={() => goTo("guest")}>
-            {t.authGuest}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (screen === "create") {
-    return (
-      <div style={styles.card}>
-        <div style={styles.nameField}>
-          <label style={styles.nameLabel(styles.p1Btn.background)}>{t.authDisplayName}</label>
-          <input
-            style={styles.nameInput}
-            type="text"
-            maxLength={16}
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-          />
-        </div>
-        <div style={styles.nameField}>
-          <label style={styles.nameLabel(styles.p1Btn.background)}>{t.authUsername}</label>
-          <input
-            style={styles.nameInput}
-            type="text"
-            maxLength={20}
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-          />
-        </div>
-        <div style={styles.nameField}>
-          <label style={styles.nameLabel(styles.p1Btn.background)}>{t.authPassword}</label>
-          <input
-            style={styles.nameInput}
-            type="password"
-            maxLength={40}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
-        <div style={styles.smallNote}>{t.authNote}</div>
-        {error && <div style={styles.errorText}>{error}</div>}
-        <button
-          style={{ ...styles.bigBtn, ...styles.p1Btn, width: "100%", marginTop: 10, opacity: busy ? 0.6 : 1 }}
-          onClick={handleCreateAccount}
-          disabled={busy}
-        >
-          {t.authSubmitCreate}
-        </button>
-        <button style={styles.linkBtn} onClick={() => goTo("choice")}>
-          {t.authBackToChoice}
-        </button>
-      </div>
-    );
-  }
-
-  if (screen === "login") {
-    return (
-      <div style={styles.card}>
-        <div style={styles.nameField}>
-          <label style={styles.nameLabel(styles.p1Btn.background)}>{t.authUsername}</label>
-          <input
-            style={styles.nameInput}
-            type="text"
-            maxLength={20}
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-          />
-        </div>
-        <div style={styles.nameField}>
-          <label style={styles.nameLabel(styles.p1Btn.background)}>{t.authPassword}</label>
-          <input
-            style={styles.nameInput}
-            type="password"
-            maxLength={40}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
-        {error && <div style={styles.errorText}>{error}</div>}
-        <button
-          style={{ ...styles.bigBtn, ...styles.p2Btn, width: "100%", marginTop: 10, opacity: busy ? 0.6 : 1 }}
-          onClick={handleLogin}
-          disabled={busy}
-        >
-          {t.authSubmitLogin}
-        </button>
-        <button style={styles.linkBtn} onClick={() => goTo("choice")}>
-          {t.authBackToChoice}
-        </button>
-      </div>
-    );
-  }
-
-  // screen === "guest"
-  return (
-    <div style={styles.card}>
-      <div style={styles.nameField}>
-        <label style={styles.nameLabel(styles.p1Btn.background)}>{t.authGuestNameLabel}</label>
-        <input
-          style={styles.nameInput}
-          type="text"
-          maxLength={16}
-          value={guestName}
-          onChange={(e) => setGuestName(e.target.value)}
-        />
-      </div>
-      {error && <div style={styles.errorText}>{error}</div>}
-      <button
-        style={{ ...styles.bigBtn, ...styles.neutralBtn, marginTop: 10 }}
-        onClick={handleGuest}
-      >
-        {t.authSubmitGuest}
-      </button>
-      <button style={styles.linkBtn} onClick={() => goTo("choice")}>
-        {t.authBackToChoice}
-      </button>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// LOCAL (pass-and-play) MODE
-// ---------------------------------------------------------------------------
-function LocalGame({ onBack, lang, session }) {
-  const t = T[lang];
-  const [stage, setStage] = useState("setup"); // setup | playing | roundOver
-  const [names, setNames] = useState({ 1: session && session.name ? session.name : "", 2: "" });
-  const [initialStarter, setInitialStarter] = useState(1);
-  const [gameIndex, setGameIndex] = useState(1);
-  const [matchScore, setMatchScore] = useState({ 1: 0, 2: 0 });
-  const [speed, setSpeed] = useState("blitz");
-  const [timeLeft, setTimeLeft] = useState(SPEED_SECONDS.blitz);
-
-  const [board, setBoard] = useState(Array(TOTAL).fill(null));
-  const [current, setCurrent] = useState(1);
-  const [selected, setSelected] = useState([]);
-  const [roundLoser, setRoundLoser] = useState(null);
-  const [lastMove, setLastMove] = useState([]);
-
-  const [wins, setWins] = useState({ 1: 0, 2: 0, draws: 0 });
-
-  const info = useMemo(() => analyzeSelection(selected, board, lang), [selected, board, lang]);
-  const filledCount = board.filter(Boolean).length;
-
-  const nameOf = (p) => withGmBadge(names[p] && names[p].trim() ? names[p].trim() : p === 1 ? t.defaultPlayer1 : t.defaultPlayer2);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("wins-score");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        setWins({ 1: parsed[1] || 0, 2: parsed[2] || 0, draws: parsed.draws || 0 });
-      }
-    } catch (e) {
-      // no saved score yet
-    }
-  }, []);
-
-  function saveWins(next) {
-    setWins(next);
-    try {
-      localStorage.setItem("wins-score", JSON.stringify(next));
-    } catch (e) {
-      // ignore
-    }
-  }
-
-  async function resetScores() {
-    await saveWins({ 1: 0, 2: 0, draws: 0 });
-  }
-
-  useEffect(() => {
-    if (stage !== "playing") return;
-    if (timeLeft <= 0) {
-      const firstEmpty = board.findIndex((c) => !c);
-      if (firstEmpty !== -1) applyMove([firstEmpty]);
-      return;
-    }
-    const t = setTimeout(() => setTimeLeft((v) => v - 1), 1000);
-    return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage, timeLeft]);
-
-  function beginBoard(starter) {
-    setBoard(Array(TOTAL).fill(null));
-    setCurrent(starter);
-    setSelected([]);
-    setRoundLoser(null);
-    setLastMove([]);
-    setTimeLeft(SPEED_SECONDS[speed]);
-    setStage("playing");
-  }
-
-  function startMatch(starter) {
-    setInitialStarter(starter);
-    setGameIndex(1);
-    setMatchScore({ 1: 0, 2: 0 });
-    beginBoard(starter);
-  }
-
-  function toggleCell(i) {
-    if (board[i]) return;
-    setSelected((prev) => (prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]));
-  }
-
-  function applyMove(cells) {
-    const next = [...board];
-    cells.forEach((i) => (next[i] = current));
-    setBoard(next);
-    setLastMove(cells);
-    setSelected([]);
-
-    const stillEmpty = next.some((c) => !c);
-    if (!stillEmpty) {
-      setRoundLoser(current);
-      const roundWinner = current === 1 ? 2 : 1;
-      const newMatchScore = { ...matchScore, [roundWinner]: matchScore[roundWinner] + 1 };
-      setMatchScore(newMatchScore);
-
-      const decided = gameIndex === 2;
-      if (decided) {
-        if (newMatchScore[1] !== newMatchScore[2]) {
-          const matchWinner = newMatchScore[1] > newMatchScore[2] ? 1 : 2;
-          saveWins({ ...wins, [matchWinner]: (wins[matchWinner] || 0) + 1 });
-        } else {
-          saveWins({ ...wins, draws: (wins.draws || 0) + 1 });
+    // ---------------------------------------------------------------------------
+    // AUTH SCREEN — create account, log in, or continue as guest
+    // ---------------------------------------------------------------------------
+    function AuthScreen({ t, onSessionReady }) {
+        const [screen, setScreen] = useState("choice"); // choice | create | login | guest
+        const [username, setUsername] = useState("");
+        const [password, setPassword] = useState("");
+        const [displayName, setDisplayName] = useState("");
+        const [guestName, setGuestName] = useState("");
+        const [error, setError] = useState("");
+        const [busy, setBusy] = useState(false);
+        function resetFields() {
+            setUsername("");
+            setPassword("");
+            setDisplayName("");
+            setGuestName("");
+            setError("");
         }
-      }
-      setStage("roundOver");
-    } else {
-      setCurrent((c) => (c === 1 ? 2 : 1));
-      setTimeLeft(SPEED_SECONDS[speed]);
-    }
-  }
-
-  function confirmMove() {
-    if (!info.valid) return;
-    applyMove(selected);
-  }
-
-  function clearSelection() {
-    setSelected([]);
-  }
-
-  function nextRound() {
-    const nextIndex = gameIndex + 1;
-    setGameIndex(nextIndex);
-    beginBoard(starterFor(nextIndex, initialStarter));
-  }
-
-  const matchDecided = stage === "roundOver" && gameIndex === 2;
-  const isDraw = matchDecided && matchScore[1] === matchScore[2];
-  const matchWinner = matchDecided && !isDraw ? (matchScore[1] > matchScore[2] ? 1 : 2) : null;
-
-  return (
-    <>
-      {stage === "setup" && (
-        <div style={styles.card}>
-          <p style={styles.introText}>{t.localIntro}</p>
-
-          {(wins[1] > 0 || wins[2] > 0) && (
-            <ScoreBoard names={{ 1: nameOf(1), 2: nameOf(2) }} score={wins} />
-          )}
-
-          <div style={styles.nameField}>
-            <label style={styles.nameLabel(styles.p1Btn.background)}>{t.player1NameLabel}</label>
-            <input
-              style={styles.nameInput}
-              type="text"
-              maxLength={16}
-              placeholder={t.player1Placeholder}
-              value={names[1]}
-              onChange={(e) => setNames((n) => ({ ...n, 1: e.target.value }))}
-            />
-          </div>
-
-          <div style={styles.nameField}>
-            <label style={styles.nameLabel(styles.p2Btn.background)}>{t.player2NameLabel}</label>
-            <input
-              style={styles.nameInput}
-              type="text"
-              maxLength={16}
-              placeholder={t.player2Placeholder}
-              value={names[2]}
-              onChange={(e) => setNames((n) => ({ ...n, 2: e.target.value }))}
-            />
-          </div>
-
-          <div style={styles.introText}>{t.gameSpeedLabel}</div>
-          <SpeedPicker speed={speed} onPick={setSpeed} t={t} />
-
-          <div style={styles.introText}>{t.whoStartsLabel}</div>
-          <div style={styles.row}>
-            <button style={{ ...styles.bigBtn, ...styles.p1Btn }} onClick={() => startMatch(1)}>
-              {nameOf(1)}
-            </button>
-            <button style={{ ...styles.bigBtn, ...styles.p2Btn }} onClick={() => startMatch(2)}>
-              {nameOf(2)}
-            </button>
-          </div>
-
-          <div style={styles.row}>
-            {(wins[1] > 0 || wins[2] > 0) && (
-              <button style={styles.linkBtn} onClick={resetScores}>
-                {t.resetScores}
-              </button>
-            )}
-            <button style={styles.linkBtn} onClick={onBack}>
-              {t.back}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {(stage === "playing" || stage === "roundOver") && (
-        <>
-          <div style={styles.matchBar}>
-            <span style={styles.matchLabel}>{t.roundLabel[gameIndex]}</span>
-            <span style={styles.matchScoreText}>
-              {matchScore[1]} - {matchScore[2]}
-            </span>
-          </div>
-
-          <div style={styles.statusBar}>
-            <div style={styles.turnPill(stage === "roundOver" ? null : current)}>
-              {stage === "roundOver" ? t.roundOverLabel : t.turnOf(nameOf(current))}
-            </div>
-            {stage === "playing" && (
-              <div style={styles.timerPill(timeLeft, SPEED_SECONDS[speed])}>{timeLeft}</div>
-            )}
-            <div style={styles.counter}>
-              {filledCount} / {TOTAL}
-            </div>
-          </div>
-
-          <Board
-            board={board}
-            selected={selected}
-            lastMove={lastMove}
-            interactive={stage === "playing"}
-            onCellClick={toggleCell}
-          />
-
-          {stage === "playing" && (
-            <div style={styles.controls}>
-              <div style={styles.feedback(info.valid, selected.length)}>
-                {selected.length === 0
-                  ? t.chooseCellsHint
-                  : info.valid
-                  ? t.readyToPlace(selected.length)
-                  : info.reason}
-              </div>
-              <div style={styles.row}>
-                <button
-                  style={{ ...styles.actionBtn, ...(info.valid ? styles.confirmActive : styles.confirmDisabled) }}
-                  onClick={confirmMove}
-                  disabled={!info.valid}
-                >
-                  {t.confirmMove}
-                </button>
-                <button
-                  style={{ ...styles.actionBtn, ...styles.ghostBtn }}
-                  onClick={clearSelection}
-                  disabled={selected.length === 0}
-                >
-                  {t.clearSelection}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {stage === "roundOver" && (
-            <div style={styles.card}>
-              <div style={styles.resultTitle}>{t.lastMarkBy(nameOf(roundLoser))}</div>
-              <div style={styles.resultSub}>{t.roundWonBy(nameOf(roundLoser === 1 ? 2 : 1))}</div>
-
-              <ScoreBoard names={{ 1: nameOf(1), 2: nameOf(2) }} score={matchScore} />
-
-              {!matchDecided && (
-                <button style={{ ...styles.bigBtn, ...styles.neutralBtn }} onClick={nextRound}>
-                  {t.secondRound}
-                </button>
-              )}
-
-              {matchDecided && (
-                <>
-                  <div style={styles.matchWinnerBanner}>
-                    {isDraw ? t.drawMatch : t.winsMatch(nameOf(matchWinner))}
-                  </div>
-                  <ScoreBoard names={{ 1: nameOf(1), 2: nameOf(2) }} score={wins} />
-                  {wins.draws > 0 && (
-                    <div style={styles.smallNote}>
-                      {t.drawsLabel}: {wins.draws}
-                    </div>
-                  )}
-                  <button style={{ ...styles.bigBtn, ...styles.neutralBtn }} onClick={() => setStage("setup")}>
-                    {t.newMatch}
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-        </>
-      )}
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// VS AI MODE
-// ---------------------------------------------------------------------------
-function DifficultyPicker({ difficulty, onPick, t }) {
-  return (
-    <div style={styles.speedRow}>
-      {["easy", "medium", "hard"].map((key) => (
-        <button key={key} style={styles.speedBtn(difficulty === key)} onClick={() => onPick(key)}>
-          {key === "easy" ? t.difficultyEasy : key === "medium" ? t.difficultyMedium : t.difficultyHard}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function AIGame({ onBack, lang, session }) {
-  const t = T[lang];
-  const HUMAN = 1;
-  const AI = 2;
-
-  const [stage, setStage] = useState("setup"); // setup | playing | roundOver
-  const [difficulty, setDifficulty] = useState("medium");
-  const [initialStarter, setInitialStarter] = useState(HUMAN);
-  const [gameIndex, setGameIndex] = useState(1);
-  const [matchScore, setMatchScore] = useState({ 1: 0, 2: 0 });
-  const [speed, setSpeed] = useState("blitz");
-  const [timeLeft, setTimeLeft] = useState(SPEED_SECONDS.blitz);
-
-  const [board, setBoard] = useState(Array(TOTAL).fill(null));
-  const [current, setCurrent] = useState(HUMAN);
-  const [selected, setSelected] = useState([]);
-  const [roundLoser, setRoundLoser] = useState(null);
-  const [lastMove, setLastMove] = useState([]);
-
-  const [wins, setWins] = useState({ 1: 0, 2: 0, draws: 0 });
-
-  const info = useMemo(() => analyzeSelection(selected, board, lang), [selected, board, lang]);
-  const filledCount = board.filter(Boolean).length;
-
-  const diffLabel = difficulty === "easy" ? t.difficultyEasy : difficulty === "medium" ? t.difficultyMedium : t.difficultyHard;
-  const nameOf = (p) =>
-    p === HUMAN ? withGmBadge(session && session.name ? session.name : t.youLabel) : `${t.aiName} (${diffLabel})`;
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("wins-score-ai");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        setWins({ 1: parsed[1] || 0, 2: parsed[2] || 0, draws: parsed.draws || 0 });
-      }
-    } catch (e) {
-      // no saved score yet
-    }
-  }, []);
-
-  function saveWins(next) {
-    setWins(next);
-    try {
-      localStorage.setItem("wins-score-ai", JSON.stringify(next));
-    } catch (e) {
-      // ignore
-    }
-  }
-
-  async function resetScores() {
-    await saveWins({ 1: 0, 2: 0, draws: 0 });
-  }
-
-  function beginBoard(starter) {
-    setBoard(Array(TOTAL).fill(null));
-    setCurrent(starter);
-    setSelected([]);
-    setRoundLoser(null);
-    setLastMove([]);
-    setTimeLeft(SPEED_SECONDS[speed]);
-    setStage("playing");
-  }
-
-  function startMatch(starter) {
-    setInitialStarter(starter);
-    setGameIndex(1);
-    setMatchScore({ 1: 0, 2: 0 });
-    beginBoard(starter);
-  }
-
-  function applyMove(cells) {
-    const next = [...board];
-    cells.forEach((i) => (next[i] = current));
-    setBoard(next);
-    setLastMove(cells);
-    setSelected([]);
-
-    const stillEmpty = next.some((c) => !c);
-    if (!stillEmpty) {
-      setRoundLoser(current);
-      const roundWinner = current === 1 ? 2 : 1;
-      const newMatchScore = { ...matchScore, [roundWinner]: matchScore[roundWinner] + 1 };
-      setMatchScore(newMatchScore);
-
-      const decided = gameIndex === 2;
-      if (decided) {
-        if (newMatchScore[1] !== newMatchScore[2]) {
-          const matchWinner = newMatchScore[1] > newMatchScore[2] ? 1 : 2;
-          saveWins({ ...wins, [matchWinner]: (wins[matchWinner] || 0) + 1 });
-        } else {
-          saveWins({ ...wins, draws: (wins.draws || 0) + 1 });
+        function goTo(next) {
+            resetFields();
+            setScreen(next);
         }
-      }
-      setStage("roundOver");
-    } else {
-      setCurrent((c) => (c === 1 ? 2 : 1));
-      setTimeLeft(SPEED_SECONDS[speed]);
-    }
-  }
-
-  // human's countdown timer (only ticks on the human's turn)
-  useEffect(() => {
-    if (stage !== "playing" || current !== HUMAN) return;
-    if (timeLeft <= 0) {
-      const firstEmpty = board.findIndex((c) => !c);
-      if (firstEmpty !== -1) applyMove([firstEmpty]);
-      return;
-    }
-    const timer = setTimeout(() => setTimeLeft((v) => v - 1), 1000);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage, timeLeft, current]);
-
-  // AI's move, triggered automatically on its turn
-  useEffect(() => {
-    if (stage !== "playing" || current !== AI) return;
-    const timer = setTimeout(() => {
-      const move = chooseAIMove(board, difficulty);
-      if (move && move.length) applyMove(move);
-    }, 550 + Math.random() * 500);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage, current, board]);
-
-  function confirmMove() {
-    if (!info.valid || current !== HUMAN) return;
-    applyMove(selected);
-  }
-
-  function clearSelection() {
-    setSelected([]);
-  }
-
-  function nextRound() {
-    const nextIndex = gameIndex + 1;
-    setGameIndex(nextIndex);
-    beginBoard(starterFor(nextIndex, initialStarter));
-  }
-
-  const matchDecided = stage === "roundOver" && gameIndex === 2;
-  const isDraw = matchDecided && matchScore[1] === matchScore[2];
-  const matchWinner = matchDecided && !isDraw ? (matchScore[1] > matchScore[2] ? 1 : 2) : null;
-
-  return (
-    <>
-      {stage === "setup" && (
-        <div style={styles.card}>
-          <p style={styles.introText}>{t.aiIntro}</p>
-
-          {(wins[1] > 0 || wins[2] > 0) && (
-            <ScoreBoard names={{ 1: nameOf(HUMAN), 2: nameOf(AI) }} score={wins} />
-          )}
-
-          <div style={styles.introText}>{t.difficultyLabel}</div>
-          <DifficultyPicker difficulty={difficulty} onPick={setDifficulty} t={t} />
-
-          <div style={styles.introText}>{t.gameSpeedLabel}</div>
-          <SpeedPicker speed={speed} onPick={setSpeed} t={t} />
-
-          <div style={styles.introText}>{t.whoStartsAI}</div>
-          <div style={styles.row}>
-            <button style={{ ...styles.bigBtn, ...styles.p1Btn }} onClick={() => startMatch(HUMAN)}>
-              {nameOf(HUMAN)}
-            </button>
-            <button style={{ ...styles.bigBtn, ...styles.p2Btn }} onClick={() => startMatch(AI)}>
-              {nameOf(AI)}
-            </button>
-          </div>
-
-          <div style={styles.row}>
-            {(wins[1] > 0 || wins[2] > 0) && (
-              <button style={styles.linkBtn} onClick={resetScores}>
-                {t.resetScores}
-              </button>
-            )}
-            <button style={styles.linkBtn} onClick={onBack}>
-              {t.back}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {(stage === "playing" || stage === "roundOver") && (
-        <>
-          <div style={styles.matchBar}>
-            <span style={styles.matchLabel}>{t.roundLabel[gameIndex]}</span>
-            <span style={styles.matchScoreText}>
-              {matchScore[1]} - {matchScore[2]}
-            </span>
-          </div>
-
-          <div style={styles.statusBar}>
-            <div style={styles.turnPill(stage === "roundOver" ? null : current)}>
-              {stage === "roundOver"
-                ? t.roundOverLabel
-                : current === AI
-                ? t.aiThinking
-                : t.turnOf(nameOf(current))}
-            </div>
-            {stage === "playing" && current === HUMAN && (
-              <div style={styles.timerPill(timeLeft, SPEED_SECONDS[speed])}>{timeLeft}</div>
-            )}
-            <div style={styles.counter}>
-              {filledCount} / {TOTAL}
-            </div>
-          </div>
-
-          <Board
-            board={board}
-            selected={selected}
-            lastMove={lastMove}
-            interactive={stage === "playing" && current === HUMAN}
-            onCellClick={(i) => {
-              if (current !== HUMAN || board[i]) return;
-              setSelected((prev) => (prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]));
-            }}
-          />
-
-          {stage === "playing" && current === HUMAN && (
-            <div style={styles.controls}>
-              <div style={styles.feedback(info.valid, selected.length)}>
-                {selected.length === 0
-                  ? t.chooseCellsHint
-                  : info.valid
-                  ? t.readyToPlace(selected.length)
-                  : info.reason}
-              </div>
-              <div style={styles.row}>
-                <button
-                  style={{ ...styles.actionBtn, ...(info.valid ? styles.confirmActive : styles.confirmDisabled) }}
-                  onClick={confirmMove}
-                  disabled={!info.valid}
-                >
-                  {t.confirmMove}
-                </button>
-                <button
-                  style={{ ...styles.actionBtn, ...styles.ghostBtn }}
-                  onClick={clearSelection}
-                  disabled={selected.length === 0}
-                >
-                  {t.clearSelection}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {stage === "roundOver" && (
-            <div style={styles.card}>
-              <div style={styles.resultTitle}>{t.lastMarkBy(nameOf(roundLoser))}</div>
-              <div style={styles.resultSub}>{t.roundWonBy(nameOf(roundLoser === 1 ? 2 : 1))}</div>
-
-              <ScoreBoard names={{ 1: nameOf(HUMAN), 2: nameOf(AI) }} score={matchScore} />
-
-              {!matchDecided && (
-                <button style={{ ...styles.bigBtn, ...styles.neutralBtn }} onClick={nextRound}>
-                  {t.secondRound}
-                </button>
-              )}
-
-              {matchDecided && (
-                <>
-                  <div style={styles.matchWinnerBanner}>
-                    {isDraw ? t.drawMatch : t.winsMatch(nameOf(matchWinner))}
-                  </div>
-                  <ScoreBoard names={{ 1: nameOf(HUMAN), 2: nameOf(AI) }} score={wins} />
-                  {wins.draws > 0 && (
-                    <div style={styles.smallNote}>
-                      {t.drawsLabel}: {wins.draws}
-                    </div>
-                  )}
-                  <button style={{ ...styles.bigBtn, ...styles.neutralBtn }} onClick={() => setStage("setup")}>
-                    {t.newMatch}
-                  </button>
-                </>
-              )}
-            </div>
-          )}
-        </>
-      )}
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// ONLINE (room-based) MODE
-// ---------------------------------------------------------------------------
-function OnlineGame({ onBack, lang, session }) {
-  const t = T[lang];
-  const [myName, setMyName] = useState(session && session.name ? session.name : "");
-  const [joinCodeInput, setJoinCodeInput] = useState("");
-  const [roomCode, setRoomCode] = useState("");
-  const [mySlot, setMySlot] = useState(null);
-  const [room, setRoom] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [copied, setCopied] = useState(false);
-  const [selected, setSelected] = useState([]);
-  const [nowTick, setNowTick] = useState(Date.now());
-
-  // live-listen to the shared room state
-  useEffect(() => {
-    if (!roomCode) return;
-    const unsubscribe = onSnapshot(doc(db, "rooms", roomCode), (snap) => {
-      if (snap.exists()) setRoom(snap.data());
-    });
-    return () => unsubscribe();
-  }, [roomCode]);
-
-  // tick for the countdown display
-  useEffect(() => {
-    if (!roomCode) return;
-    const id = setInterval(() => setNowTick(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, [roomCode]);
-
-  // Local, per-device countdown anchor. We deliberately do NOT compare
-  // room.turnDeadline (set by whichever device's clock made the move)
-  // against this device's own clock — if the two devices' clocks aren't
-  // perfectly in sync, that comparison can read as "already expired" the
-  // instant a new turn arrives, firing the auto-move before the real time
-  // is up. Instead, each device starts its own countdown, on its own
-  // clock, the moment it notices a new turn (new turnDeadline value).
-  const turnAnchorRef = useRef(null); // { key, anchorTime, duration }
-  const [remaining, setRemaining] = useState(null);
-
-  useEffect(() => {
-    if (!room || room.stage !== "playing" || !room.turnDeadline) {
-      turnAnchorRef.current = null;
-      setRemaining(null);
-      return;
-    }
-    const key = `${room.gameIndex}-${room.current}-${room.turnDeadline}`;
-    if (!turnAnchorRef.current || turnAnchorRef.current.key !== key) {
-      turnAnchorRef.current = {
-        key,
-        anchorTime: Date.now(),
-        duration: SPEED_SECONDS[room.speed] || SPEED_SECONDS.blitz,
-      };
-    }
-    const { anchorTime, duration } = turnAnchorRef.current;
-    const elapsed = Math.floor((Date.now() - anchorTime) / 1000);
-    setRemaining(Math.max(0, duration - elapsed));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [room && room.turnDeadline, room && room.stage, room && room.current, room && room.gameIndex, nowTick]);
-
-  // only the player on turn triggers the timeout auto-move, to avoid double writes
-  useEffect(() => {
-    if (!room || room.stage !== "playing" || !mySlot) return;
-    if (room.current !== mySlot) return;
-    if (remaining === null || remaining > 0) return;
-    const firstEmpty = room.board.findIndex((c) => !c);
-    if (firstEmpty !== -1) onlineApplyMove([firstEmpty]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remaining]);
-
-  const onlineInfo = useMemo(
-    () => analyzeSelection(selected, room ? room.board : null, lang),
-    [selected, room, lang]
-  );
-
-  async function createRoom() {
-    if (!myName.trim()) return setError(t.errWriteNameFirst);
-    setBusy(true);
-    const code = genCode();
-    const r = emptyRoom();
-    r.players[1] = myName.trim();
-    await writeRoom(code, r);
-    setRoom(r);
-    setMySlot(1);
-    setRoomCode(code);
-    setError("");
-    setBusy(false);
-  }
-
-  async function joinRoom() {
-    const code = joinCodeInput.trim().toUpperCase();
-    if (!code) return setError(t.errWriteRoomCode);
-    if (!myName.trim()) return setError(t.errWriteNameFirst);
-    setBusy(true);
-    const r = await readRoom(code);
-    if (!r) {
-      setError(t.errRoomNotFound);
-      setBusy(false);
-      return;
-    }
-    if (r.players[2] && r.players[2].trim()) {
-      setError(t.errRoomFull);
-      setBusy(false);
-      return;
-    }
-    r.players[2] = myName.trim();
-    await writeRoom(code, r);
-    setRoom(r);
-    setMySlot(2);
-    setRoomCode(code);
-    setError("");
-    setBusy(false);
-  }
-
-  function nameOf(p) {
-    const n = room && room.players[p];
-    return withGmBadge(n && n.trim() ? n.trim() : p === 1 ? t.defaultPlayer1 : t.defaultPlayer2);
-  }
-
-  async function setOnlineSpeed(key) {
-    if (!room) return;
-    const updated = { ...room, speed: key };
-    setRoom(updated);
-    await writeRoom(roomCode, updated);
-  }
-
-  async function startOnlineMatch(starter) {
-    if (!room) return;
-    const updated = {
-      ...room,
-      initialStarter: starter,
-      gameIndex: 1,
-      matchScore: { 1: 0, 2: 0 },
-      board: Array(TOTAL).fill(null),
-      current: starter,
-      roundLoser: null,
-      lastMove: [],
-      turnDeadline: Date.now() + SPEED_SECONDS[room.speed] * 1000,
-      stage: "playing",
-    };
-    setRoom(updated);
-    await writeRoom(roomCode, updated);
-  }
-
-  async function onlineApplyMove(cells) {
-    if (!room) return;
-    const next = [...room.board];
-    cells.forEach((i) => (next[i] = room.current));
-    const stillEmpty = next.some((c) => !c);
-    let updated = { ...room, board: next, lastMove: cells };
-
-    if (!stillEmpty) {
-      const roundWinner = room.current === 1 ? 2 : 1;
-      const newMatchScore = { ...room.matchScore, [roundWinner]: room.matchScore[roundWinner] + 1 };
-      const decided = room.gameIndex === 2;
-      updated = { ...updated, matchScore: newMatchScore, roundLoser: room.current, stage: "roundOver", turnDeadline: null };
-      if (decided) {
-        if (newMatchScore[1] !== newMatchScore[2]) {
-          const matchWinner = newMatchScore[1] > newMatchScore[2] ? 1 : 2;
-          updated.wins = { ...room.wins, [matchWinner]: (room.wins[matchWinner] || 0) + 1 };
-        } else {
-          updated.wins = { ...room.wins, draws: (room.wins.draws || 0) + 1 };
+        async function handleCreateAccount() {
+            if (!username.trim() || !password.trim() || !displayName.trim()) {
+                setError(t.authFillAll);
+                return;
+            }
+            setBusy(true);
+            const accountId = username.trim().toLowerCase();
+            let existing = null;
+            try {
+                const snap = await getDoc(doc(db, "accounts", accountId));
+                existing = snap.exists() ? snap.data() : null;
+            }
+            catch (e) {
+                setError(t.authGenericError);
+                setBusy(false);
+                return;
+            }
+            if (existing) {
+                setError(t.authUsernameTaken);
+                setBusy(false);
+                return;
+            }
+            try {
+                await setDoc(doc(db, "accounts", accountId), {
+                    username: username.trim(),
+                    password,
+                    displayName: displayName.trim(),
+                });
+                localStorage.setItem("logged-in-account", JSON.stringify({ username: username.trim(), displayName: displayName.trim() }));
+            }
+            catch (e) {
+                setError(t.authGenericError);
+                setBusy(false);
+                return;
+            }
+            setBusy(false);
+            onSessionReady({ type: "account", name: displayName.trim(), username: username.trim() });
         }
-      }
-    } else {
-      const nextCurrent = room.current === 1 ? 2 : 1;
-      updated = { ...updated, current: nextCurrent, turnDeadline: Date.now() + SPEED_SECONDS[room.speed] * 1000 };
+        async function handleLogin() {
+            if (!username.trim() || !password.trim()) {
+                setError(t.authFillAll);
+                return;
+            }
+            setBusy(true);
+            const accountId = username.trim().toLowerCase();
+            let account = null;
+            try {
+                const snap = await getDoc(doc(db, "accounts", accountId));
+                account = snap.exists() ? snap.data() : null;
+            }
+            catch (e) {
+                console.error("Firestore read failed:", e);
+                setError(t.authGenericError);
+                setBusy(false);
+                return;
+            }
+            if (!account) {
+                setError(t.authAccountNotFound);
+                setBusy(false);
+                return;
+            }
+            if (account.password !== password) {
+                setError(t.authWrongPassword);
+                setBusy(false);
+                return;
+            }
+            try {
+                localStorage.setItem("logged-in-account", JSON.stringify({ username: account.username, displayName: account.displayName }));
+            }
+            catch (e) {
+                // ignore persistence failure, session still works for this visit
+            }
+            setBusy(false);
+            onSessionReady({ type: "account", name: account.displayName, username: account.username });
+        }
+        function handleGuest() {
+            if (!guestName.trim()) {
+                setError(t.authEnterName);
+                return;
+            }
+            onSessionReady({ type: "guest", name: guestName.trim() });
+        }
+        if (screen === "choice") {
+            return (React.createElement("div", { style: styles.card },
+                React.createElement("p", { style: styles.introText }, t.authIntro),
+                React.createElement("div", { style: styles.row },
+                    React.createElement("button", { style: { ...styles.bigBtn, ...styles.p1Btn }, onClick: () => goTo("create") }, t.authCreateAccount),
+                    React.createElement("button", { style: { ...styles.bigBtn, ...styles.p2Btn }, onClick: () => goTo("login") }, t.authLogin)),
+                React.createElement("div", { style: styles.row },
+                    React.createElement("button", { style: { ...styles.bigBtn, ...styles.neutralBtn }, onClick: () => goTo("guest") }, t.authGuest))));
+        }
+        if (screen === "create") {
+            return (React.createElement("div", { style: styles.card },
+                React.createElement("div", { style: styles.nameField },
+                    React.createElement("label", { style: styles.nameLabel(styles.p1Btn.background) }, t.authDisplayName),
+                    React.createElement("input", { style: styles.nameInput, type: "text", maxLength: 16, value: displayName, onChange: (e) => setDisplayName(e.target.value) })),
+                React.createElement("div", { style: styles.nameField },
+                    React.createElement("label", { style: styles.nameLabel(styles.p1Btn.background) }, t.authUsername),
+                    React.createElement("input", { style: styles.nameInput, type: "text", maxLength: 20, value: username, onChange: (e) => setUsername(e.target.value) })),
+                React.createElement("div", { style: styles.nameField },
+                    React.createElement("label", { style: styles.nameLabel(styles.p1Btn.background) }, t.authPassword),
+                    React.createElement("input", { style: styles.nameInput, type: "password", maxLength: 40, value: password, onChange: (e) => setPassword(e.target.value) })),
+                React.createElement("div", { style: styles.smallNote }, t.authNote),
+                error && React.createElement("div", { style: styles.errorText }, error),
+                React.createElement("button", { style: { ...styles.bigBtn, ...styles.p1Btn, width: "100%", marginTop: 10, opacity: busy ? 0.6 : 1 }, onClick: handleCreateAccount, disabled: busy }, t.authSubmitCreate),
+                React.createElement("button", { style: styles.linkBtn, onClick: () => goTo("choice") }, t.authBackToChoice)));
+        }
+        if (screen === "login") {
+            return (React.createElement("div", { style: styles.card },
+                React.createElement("div", { style: styles.nameField },
+                    React.createElement("label", { style: styles.nameLabel(styles.p1Btn.background) }, t.authUsername),
+                    React.createElement("input", { style: styles.nameInput, type: "text", maxLength: 20, value: username, onChange: (e) => setUsername(e.target.value) })),
+                React.createElement("div", { style: styles.nameField },
+                    React.createElement("label", { style: styles.nameLabel(styles.p1Btn.background) }, t.authPassword),
+                    React.createElement("input", { style: styles.nameInput, type: "password", maxLength: 40, value: password, onChange: (e) => setPassword(e.target.value) })),
+                error && React.createElement("div", { style: styles.errorText }, error),
+                React.createElement("button", { style: { ...styles.bigBtn, ...styles.p2Btn, width: "100%", marginTop: 10, opacity: busy ? 0.6 : 1 }, onClick: handleLogin, disabled: busy }, t.authSubmitLogin),
+                React.createElement("button", { style: styles.linkBtn, onClick: () => goTo("choice") }, t.authBackToChoice)));
+        }
+        // screen === "guest"
+        return (React.createElement("div", { style: styles.card },
+            React.createElement("div", { style: styles.nameField },
+                React.createElement("label", { style: styles.nameLabel(styles.p1Btn.background) }, t.authGuestNameLabel),
+                React.createElement("input", { style: styles.nameInput, type: "text", maxLength: 16, value: guestName, onChange: (e) => setGuestName(e.target.value) })),
+            error && React.createElement("div", { style: styles.errorText }, error),
+            React.createElement("button", { style: { ...styles.bigBtn, ...styles.neutralBtn, marginTop: 10 }, onClick: handleGuest }, t.authSubmitGuest),
+            React.createElement("button", { style: styles.linkBtn, onClick: () => goTo("choice") }, t.authBackToChoice)));
     }
-
-    setRoom(updated);
-    setSelected([]);
-    await writeRoom(roomCode, updated);
-  }
-
-  async function confirmOnlineMove() {
-    if (!onlineInfo.valid) return;
-    await onlineApplyMove(selected);
-  }
-
-  async function nextOnlineRound() {
-    if (!room) return;
-    const nextIndex = room.gameIndex + 1;
-    const starter = starterFor(nextIndex, room.initialStarter);
-    const updated = {
-      ...room,
-      gameIndex: nextIndex,
-      board: Array(TOTAL).fill(null),
-      current: starter,
-      roundLoser: null,
-      lastMove: [],
-      turnDeadline: Date.now() + SPEED_SECONDS[room.speed] * 1000,
-      stage: "playing",
-    };
-    setRoom(updated);
-    await writeRoom(roomCode, updated);
-  }
-
-  async function newOnlineMatch() {
-    if (!room) return;
-    const updated = {
-      ...room,
-      stage: "lobby",
-      board: Array(TOTAL).fill(null),
-      matchScore: { 1: 0, 2: 0 },
-      gameIndex: 1,
-      roundLoser: null,
-      lastMove: [],
-      turnDeadline: null,
-    };
-    setRoom(updated);
-    await writeRoom(roomCode, updated);
-  }
-
-  function leaveRoom() {
-    setRoomCode("");
-    setMySlot(null);
-    setRoom(null);
-    setSelected([]);
-    setError("");
-    setCopied(false);
-  }
-
-  function toggleCell(i) {
-    if (!room || room.board[i]) return;
-    if (room.current !== mySlot || room.stage !== "playing") return;
-    setSelected((prev) => (prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]));
-  }
-
-  async function copyInvite() {
-    const text = t.inviteText(roomCode);
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      }
-    } catch (e) {
-      // clipboard unavailable — the code is already visible to copy by hand
+    // ---------------------------------------------------------------------------
+    // LOCAL (pass-and-play) MODE
+    // ---------------------------------------------------------------------------
+    function LocalGame({ onBack, lang, session }) {
+        const t = T[lang];
+        const [stage, setStage] = useState("setup"); // setup | playing | roundOver
+        const [names, setNames] = useState({ 1: session && session.name ? session.name : "", 2: "" });
+        const [initialStarter, setInitialStarter] = useState(1);
+        const [gameIndex, setGameIndex] = useState(1);
+        const [matchScore, setMatchScore] = useState({ 1: 0, 2: 0 });
+        const [speed, setSpeed] = useState("blitz");
+        const [timeLeft, setTimeLeft] = useState(SPEED_SECONDS.blitz);
+        const [board, setBoard] = useState(Array(TOTAL).fill(null));
+        const [current, setCurrent] = useState(1);
+        const [selected, setSelected] = useState([]);
+        const [roundLoser, setRoundLoser] = useState(null);
+        const [lastMove, setLastMove] = useState([]);
+        const [wins, setWins] = useState({ 1: 0, 2: 0, draws: 0 });
+        const info = useMemo(() => analyzeSelection(selected, board, lang), [selected, board, lang]);
+        const filledCount = board.filter(Boolean).length;
+        const nameOf = (p) => withGmBadge(names[p] && names[p].trim() ? names[p].trim() : p === 1 ? t.defaultPlayer1 : t.defaultPlayer2);
+        useEffect(() => {
+            try {
+                const raw = localStorage.getItem("wins-score");
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    setWins({ 1: parsed[1] || 0, 2: parsed[2] || 0, draws: parsed.draws || 0 });
+                }
+            }
+            catch (e) {
+                // no saved score yet
+            }
+        }, []);
+        function saveWins(next) {
+            setWins(next);
+            try {
+                localStorage.setItem("wins-score", JSON.stringify(next));
+            }
+            catch (e) {
+                // ignore
+            }
+        }
+        async function resetScores() {
+            await saveWins({ 1: 0, 2: 0, draws: 0 });
+        }
+        useEffect(() => {
+            if (stage !== "playing")
+                return;
+            if (timeLeft <= 0) {
+                const firstEmpty = board.findIndex((c) => !c);
+                if (firstEmpty !== -1)
+                    applyMove([firstEmpty]);
+                return;
+            }
+            const t = setTimeout(() => setTimeLeft((v) => v - 1), 1000);
+            return () => clearTimeout(t);
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, [stage, timeLeft]);
+        function beginBoard(starter) {
+            setBoard(Array(TOTAL).fill(null));
+            setCurrent(starter);
+            setSelected([]);
+            setRoundLoser(null);
+            setLastMove([]);
+            setTimeLeft(SPEED_SECONDS[speed]);
+            setStage("playing");
+        }
+        function startMatch(starter) {
+            setInitialStarter(starter);
+            setGameIndex(1);
+            setMatchScore({ 1: 0, 2: 0 });
+            beginBoard(starter);
+        }
+        function toggleCell(i) {
+            if (board[i])
+                return;
+            setSelected((prev) => (prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]));
+        }
+        function applyMove(cells) {
+            const next = [...board];
+            cells.forEach((i) => (next[i] = current));
+            setBoard(next);
+            setLastMove(cells);
+            setSelected([]);
+            const stillEmpty = next.some((c) => !c);
+            if (!stillEmpty) {
+                setRoundLoser(current);
+                const roundWinner = current === 1 ? 2 : 1;
+                const newMatchScore = { ...matchScore, [roundWinner]: matchScore[roundWinner] + 1 };
+                setMatchScore(newMatchScore);
+                const decided = gameIndex === 2;
+                if (decided) {
+                    if (newMatchScore[1] !== newMatchScore[2]) {
+                        const matchWinner = newMatchScore[1] > newMatchScore[2] ? 1 : 2;
+                        saveWins({ ...wins, [matchWinner]: (wins[matchWinner] || 0) + 1 });
+                    }
+                    else {
+                        saveWins({ ...wins, draws: (wins.draws || 0) + 1 });
+                    }
+                }
+                setStage("roundOver");
+            }
+            else {
+                setCurrent((c) => (c === 1 ? 2 : 1));
+                setTimeLeft(SPEED_SECONDS[speed]);
+            }
+        }
+        function confirmMove() {
+            if (!info.valid)
+                return;
+            applyMove(selected);
+        }
+        function clearSelection() {
+            setSelected([]);
+        }
+        function nextRound() {
+            const nextIndex = gameIndex + 1;
+            setGameIndex(nextIndex);
+            beginBoard(starterFor(nextIndex, initialStarter));
+        }
+        const matchDecided = stage === "roundOver" && gameIndex === 2;
+        const isDraw = matchDecided && matchScore[1] === matchScore[2];
+        const matchWinner = matchDecided && !isDraw ? (matchScore[1] > matchScore[2] ? 1 : 2) : null;
+        return (React.createElement(React.Fragment, null,
+            stage === "setup" && (React.createElement("div", { style: styles.card },
+                React.createElement("p", { style: styles.introText }, t.localIntro),
+                (wins[1] > 0 || wins[2] > 0) && (React.createElement(ScoreBoard, { names: { 1: nameOf(1), 2: nameOf(2) }, score: wins })),
+                React.createElement("div", { style: styles.nameField },
+                    React.createElement("label", { style: styles.nameLabel(styles.p1Btn.background) }, t.player1NameLabel),
+                    React.createElement("input", { style: styles.nameInput, type: "text", maxLength: 16, placeholder: t.player1Placeholder, value: names[1], onChange: (e) => setNames((n) => ({ ...n, 1: e.target.value })) })),
+                React.createElement("div", { style: styles.nameField },
+                    React.createElement("label", { style: styles.nameLabel(styles.p2Btn.background) }, t.player2NameLabel),
+                    React.createElement("input", { style: styles.nameInput, type: "text", maxLength: 16, placeholder: t.player2Placeholder, value: names[2], onChange: (e) => setNames((n) => ({ ...n, 2: e.target.value })) })),
+                React.createElement("div", { style: styles.introText }, t.gameSpeedLabel),
+                React.createElement(SpeedPicker, { speed: speed, onPick: setSpeed, t: t }),
+                React.createElement("div", { style: styles.introText }, t.whoStartsLabel),
+                React.createElement("div", { style: styles.row },
+                    React.createElement("button", { style: { ...styles.bigBtn, ...styles.p1Btn }, onClick: () => startMatch(1) }, nameOf(1)),
+                    React.createElement("button", { style: { ...styles.bigBtn, ...styles.p2Btn }, onClick: () => startMatch(2) }, nameOf(2))),
+                React.createElement("div", { style: styles.row },
+                    (wins[1] > 0 || wins[2] > 0) && (React.createElement("button", { style: styles.linkBtn, onClick: resetScores }, t.resetScores)),
+                    React.createElement("button", { style: styles.linkBtn, onClick: onBack }, t.back)))),
+            (stage === "playing" || stage === "roundOver") && (React.createElement(React.Fragment, null,
+                React.createElement("div", { style: styles.matchBar },
+                    React.createElement("span", { style: styles.matchLabel }, t.roundLabel[gameIndex]),
+                    React.createElement("span", { style: styles.matchScoreText },
+                        matchScore[1],
+                        " - ",
+                        matchScore[2])),
+                React.createElement("div", { style: styles.statusBar },
+                    React.createElement("div", { style: styles.turnPill(stage === "roundOver" ? null : current) }, stage === "roundOver" ? t.roundOverLabel : t.turnOf(nameOf(current))),
+                    stage === "playing" && (React.createElement("div", { style: styles.timerPill(timeLeft, SPEED_SECONDS[speed]) }, timeLeft)),
+                    React.createElement("div", { style: styles.counter },
+                        filledCount,
+                        " / ",
+                        TOTAL)),
+                React.createElement(Board, { board: board, selected: selected, lastMove: lastMove, interactive: stage === "playing", onCellClick: toggleCell }),
+                stage === "playing" && (React.createElement("div", { style: styles.controls },
+                    React.createElement("div", { style: styles.feedback(info.valid, selected.length) }, selected.length === 0
+                        ? t.chooseCellsHint
+                        : info.valid
+                            ? t.readyToPlace(selected.length)
+                            : info.reason),
+                    React.createElement("div", { style: styles.row },
+                        React.createElement("button", { style: { ...styles.actionBtn, ...(info.valid ? styles.confirmActive : styles.confirmDisabled) }, onClick: confirmMove, disabled: !info.valid }, t.confirmMove),
+                        React.createElement("button", { style: { ...styles.actionBtn, ...styles.ghostBtn }, onClick: clearSelection, disabled: selected.length === 0 }, t.clearSelection)))),
+                stage === "roundOver" && (React.createElement("div", { style: styles.card },
+                    React.createElement("div", { style: styles.resultTitle }, t.lastMarkBy(nameOf(roundLoser))),
+                    React.createElement("div", { style: styles.resultSub }, t.roundWonBy(nameOf(roundLoser === 1 ? 2 : 1))),
+                    React.createElement(ScoreBoard, { names: { 1: nameOf(1), 2: nameOf(2) }, score: matchScore }),
+                    !matchDecided && (React.createElement("button", { style: { ...styles.bigBtn, ...styles.neutralBtn }, onClick: nextRound }, t.secondRound)),
+                    matchDecided && (React.createElement(React.Fragment, null,
+                        React.createElement("div", { style: styles.matchWinnerBanner }, isDraw ? t.drawMatch : t.winsMatch(nameOf(matchWinner))),
+                        React.createElement(ScoreBoard, { names: { 1: nameOf(1), 2: nameOf(2) }, score: wins }),
+                        wins.draws > 0 && (React.createElement("div", { style: styles.smallNote },
+                            t.drawsLabel,
+                            ": ",
+                            wins.draws)),
+                        React.createElement("button", { style: { ...styles.bigBtn, ...styles.neutralBtn }, onClick: () => setStage("setup") }, t.newMatch)))))))));
     }
-  }
-
-  const bothPresent = !!(room && room.players[1] && room.players[2] && room.players[1].trim() && room.players[2].trim());
-  const matchDecided = room && room.stage === "roundOver" && room.gameIndex === 2;
-  const isDraw = matchDecided && room.matchScore[1] === room.matchScore[2];
-
-  return (
-    <>
-      {/* Enter name (prefilled from session), then create or join a room */}
-      {!roomCode && (
-        <div style={styles.card}>
-          <p style={styles.introText}>{t.onlineIntro}</p>
-          <div style={styles.nameField}>
-            <label style={styles.nameLabel(styles.p1Btn.background)}>{t.yourNameLabel}</label>
-            <input
-              style={styles.nameInput}
-              type="text"
-              maxLength={16}
-              placeholder={t.yourNamePlaceholder}
-              value={myName}
-              onChange={(e) => setMyName(e.target.value)}
-            />
-          </div>
-
-          {error && <div style={styles.errorText}>{error}</div>}
-
-          <button
-            style={{ ...styles.bigBtn, ...styles.p1Btn, opacity: busy ? 0.6 : 1 }}
-            onClick={createRoom}
-            disabled={busy}
-          >
-            {t.createRoomBtn}
-          </button>
-
-          <div style={styles.row}>
-            <input
-              style={styles.nameInput}
-              type="text"
-              maxLength={4}
-              placeholder={t.roomCodePlaceholder}
-              value={joinCodeInput}
-              onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
-            />
-            <button
-              style={{ ...styles.bigBtn, ...styles.p2Btn, opacity: busy ? 0.6 : 1 }}
-              onClick={joinRoom}
-              disabled={busy}
-            >
-              {t.joinWithCode}
-            </button>
-          </div>
-
-          <button style={styles.linkBtn} onClick={onBack}>
-            {t.back}
-          </button>
-        </div>
-      )}
-
-      {/* Room lobby: waiting for the friend, then pick speed + starter */}
-      {roomCode && room && room.stage === "lobby" && (
-        <div style={styles.card}>
-          <div style={styles.roomCodeBox}>
-            <span style={styles.introText}>{t.roomCodeShareLabel}</span>
-            <span style={styles.roomCodeText}>{roomCode}</span>
-            <button style={styles.copyBtn} onClick={copyInvite}>
-              {copied ? t.copiedLabel : t.copyInviteBtn}
-            </button>
-          </div>
-
-          <div style={styles.waitingNote}>
-            {bothPresent ? t.bothInRoom(nameOf(1), nameOf(2)) : t.waitingFriend}
-          </div>
-
-          <div style={styles.introText}>{t.gameSpeedLabel}</div>
-          <SpeedPicker speed={room.speed} onPick={setOnlineSpeed} t={t} />
-
-          {bothPresent && (
-            <>
-              <div style={styles.introText}>{t.whoStartsLabel}</div>
-              <div style={styles.row}>
-                <button style={{ ...styles.bigBtn, ...styles.p1Btn }} onClick={() => startOnlineMatch(1)}>
-                  {nameOf(1)}
-                </button>
-                <button style={{ ...styles.bigBtn, ...styles.p2Btn }} onClick={() => startOnlineMatch(2)}>
-                  {nameOf(2)}
-                </button>
-              </div>
-            </>
-          )}
-
-          <button style={styles.linkBtn} onClick={leaveRoom}>
-            {t.leaveRoomBtn}
-          </button>
-        </div>
-      )}
-
-      {/* Active round + round result */}
-      {roomCode && room && (room.stage === "playing" || room.stage === "roundOver") && (
-        <>
-          <div style={styles.matchBar}>
-            <span style={styles.matchLabel}>{t.roundLabel[room.gameIndex]}</span>
-            <span style={styles.matchScoreText}>
-              {room.matchScore[1]} - {room.matchScore[2]}
-            </span>
-          </div>
-
-          <div style={styles.statusBar}>
-            <div style={styles.turnPill(room.stage === "roundOver" ? null : room.current)}>
-              {room.stage === "roundOver"
-                ? t.roundOverLabel
-                : room.current === mySlot
-                ? t.yourTurnLabel
-                : t.turnOf(nameOf(room.current))}
-            </div>
-            {room.stage === "playing" && remaining !== null && (
-              <div style={styles.timerPill(remaining, SPEED_SECONDS[room.speed])}>{remaining}</div>
-            )}
-            <div style={styles.counter}>
-              {room.board.filter(Boolean).length} / {TOTAL}
-            </div>
-          </div>
-
-          <Board
-            board={room.board}
-            selected={selected}
-            lastMove={room.lastMove}
-            interactive={room.stage === "playing" && room.current === mySlot}
-            onCellClick={toggleCell}
-          />
-
-          {room.stage === "playing" && (
-            <div style={styles.controls}>
-              <div style={styles.feedback(onlineInfo.valid, selected.length)}>
-                {room.current !== mySlot
-                  ? t.waitingMove(nameOf(room.current))
-                  : selected.length === 0
-                  ? t.chooseCellsHint
-                  : onlineInfo.valid
-                  ? t.readyToPlace(selected.length)
-                  : onlineInfo.reason}
-              </div>
-              {room.current === mySlot && (
-                <div style={styles.row}>
-                  <button
-                    style={{ ...styles.actionBtn, ...(onlineInfo.valid ? styles.confirmActive : styles.confirmDisabled) }}
-                    onClick={confirmOnlineMove}
-                    disabled={!onlineInfo.valid}
-                  >
-                    {t.confirmMove}
-                  </button>
-                  <button
-                    style={{ ...styles.actionBtn, ...styles.ghostBtn }}
-                    onClick={() => setSelected([])}
-                    disabled={selected.length === 0}
-                  >
-                    {t.clearSelection}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {room.stage === "roundOver" && (
-            <div style={styles.card}>
-              <div style={styles.resultTitle}>{t.lastMarkBy(nameOf(room.roundLoser))}</div>
-              <div style={styles.resultSub}>{t.roundWonBy(nameOf(room.roundLoser === 1 ? 2 : 1))}</div>
-
-              <ScoreBoard names={{ 1: nameOf(1), 2: nameOf(2) }} score={room.matchScore} />
-
-              {!matchDecided && (
-                <button style={{ ...styles.bigBtn, ...styles.neutralBtn }} onClick={nextOnlineRound}>
-                  {t.secondRound}
-                </button>
-              )}
-
-              {matchDecided && (
-                <>
-                  <div style={styles.matchWinnerBanner}>
-                    {isDraw
-                      ? t.drawMatch
-                      : t.winsMatch(nameOf(room.matchScore[1] > room.matchScore[2] ? 1 : 2))}
-                  </div>
-                  {room.wins && <ScoreBoard names={{ 1: nameOf(1), 2: nameOf(2) }} score={room.wins} />}
-                  {room.wins && room.wins.draws > 0 && (
-                    <div style={styles.smallNote}>
-                      {t.drawsLabel}: {room.wins.draws}
-                    </div>
-                  )}
-                  <button style={{ ...styles.bigBtn, ...styles.neutralBtn }} onClick={newOnlineMatch}>
-                    {t.newMatch}
-                  </button>
-                </>
-              )}
-
-              <button style={styles.linkBtn} onClick={leaveRoom}>
-                {t.leaveRoomBtn}
-              </button>
-            </div>
-          )}
-        </>
-      )}
-    </>
-  );
+    // ---------------------------------------------------------------------------
+    // VS AI MODE
+    // ---------------------------------------------------------------------------
+    function DifficultyPicker({ difficulty, onPick, t }) {
+        return (React.createElement("div", { style: styles.speedRow }, ["easy", "medium", "hard"].map((key) => (React.createElement("button", { key: key, style: styles.speedBtn(difficulty === key), onClick: () => onPick(key) }, key === "easy" ? t.difficultyEasy : key === "medium" ? t.difficultyMedium : t.difficultyHard)))));
+    }
+    function AIGame({ onBack, lang, session }) {
+        const t = T[lang];
+        const HUMAN = 1;
+        const AI = 2;
+        const [stage, setStage] = useState("setup"); // setup | playing | roundOver
+        const [difficulty, setDifficulty] = useState("medium");
+        const [initialStarter, setInitialStarter] = useState(HUMAN);
+        const [gameIndex, setGameIndex] = useState(1);
+        const [matchScore, setMatchScore] = useState({ 1: 0, 2: 0 });
+        const [speed, setSpeed] = useState("blitz");
+        const [timeLeft, setTimeLeft] = useState(SPEED_SECONDS.blitz);
+        const [board, setBoard] = useState(Array(TOTAL).fill(null));
+        const [current, setCurrent] = useState(HUMAN);
+        const [selected, setSelected] = useState([]);
+        const [roundLoser, setRoundLoser] = useState(null);
+        const [lastMove, setLastMove] = useState([]);
+        const [wins, setWins] = useState({ 1: 0, 2: 0, draws: 0 });
+        const info = useMemo(() => analyzeSelection(selected, board, lang), [selected, board, lang]);
+        const filledCount = board.filter(Boolean).length;
+        const diffLabel = difficulty === "easy" ? t.difficultyEasy : difficulty === "medium" ? t.difficultyMedium : t.difficultyHard;
+        const nameOf = (p) => p === HUMAN ? withGmBadge(session && session.name ? session.name : t.youLabel) : `${t.aiName} (${diffLabel})`;
+        useEffect(() => {
+            try {
+                const raw = localStorage.getItem("wins-score-ai");
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    setWins({ 1: parsed[1] || 0, 2: parsed[2] || 0, draws: parsed.draws || 0 });
+                }
+            }
+            catch (e) {
+                // no saved score yet
+            }
+        }, []);
+        function saveWins(next) {
+            setWins(next);
+            try {
+                localStorage.setItem("wins-score-ai", JSON.stringify(next));
+            }
+            catch (e) {
+                // ignore
+            }
+        }
+        async function resetScores() {
+            await saveWins({ 1: 0, 2: 0, draws: 0 });
+        }
+        function beginBoard(starter) {
+            setBoard(Array(TOTAL).fill(null));
+            setCurrent(starter);
+            setSelected([]);
+            setRoundLoser(null);
+            setLastMove([]);
+            setTimeLeft(SPEED_SECONDS[speed]);
+            setStage("playing");
+        }
+        function startMatch(starter) {
+            setInitialStarter(starter);
+            setGameIndex(1);
+            setMatchScore({ 1: 0, 2: 0 });
+            beginBoard(starter);
+        }
+        function applyMove(cells) {
+            const next = [...board];
+            cells.forEach((i) => (next[i] = current));
+            setBoard(next);
+            setLastMove(cells);
+            setSelected([]);
+            const stillEmpty = next.some((c) => !c);
+            if (!stillEmpty) {
+                setRoundLoser(current);
+                const roundWinner = current === 1 ? 2 : 1;
+                const newMatchScore = { ...matchScore, [roundWinner]: matchScore[roundWinner] + 1 };
+                setMatchScore(newMatchScore);
+                const decided = gameIndex === 2;
+                if (decided) {
+                    if (newMatchScore[1] !== newMatchScore[2]) {
+                        const matchWinner = newMatchScore[1] > newMatchScore[2] ? 1 : 2;
+                        saveWins({ ...wins, [matchWinner]: (wins[matchWinner] || 0) + 1 });
+                    }
+                    else {
+                        saveWins({ ...wins, draws: (wins.draws || 0) + 1 });
+                    }
+                }
+                setStage("roundOver");
+            }
+            else {
+                setCurrent((c) => (c === 1 ? 2 : 1));
+                setTimeLeft(SPEED_SECONDS[speed]);
+            }
+        }
+        // human's countdown timer (only ticks on the human's turn)
+        useEffect(() => {
+            if (stage !== "playing" || current !== HUMAN)
+                return;
+            if (timeLeft <= 0) {
+                const firstEmpty = board.findIndex((c) => !c);
+                if (firstEmpty !== -1)
+                    applyMove([firstEmpty]);
+                return;
+            }
+            const timer = setTimeout(() => setTimeLeft((v) => v - 1), 1000);
+            return () => clearTimeout(timer);
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, [stage, timeLeft, current]);
+        // AI's move, triggered automatically on its turn
+        useEffect(() => {
+            if (stage !== "playing" || current !== AI)
+                return;
+            const timer = setTimeout(() => {
+                const move = chooseAIMove(board, difficulty);
+                if (move && move.length)
+                    applyMove(move);
+            }, 550 + Math.random() * 500);
+            return () => clearTimeout(timer);
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, [stage, current, board]);
+        function confirmMove() {
+            if (!info.valid || current !== HUMAN)
+                return;
+            applyMove(selected);
+        }
+        function clearSelection() {
+            setSelected([]);
+        }
+        function nextRound() {
+            const nextIndex = gameIndex + 1;
+            setGameIndex(nextIndex);
+            beginBoard(starterFor(nextIndex, initialStarter));
+        }
+        const matchDecided = stage === "roundOver" && gameIndex === 2;
+        const isDraw = matchDecided && matchScore[1] === matchScore[2];
+        const matchWinner = matchDecided && !isDraw ? (matchScore[1] > matchScore[2] ? 1 : 2) : null;
+        return (React.createElement(React.Fragment, null,
+            stage === "setup" && (React.createElement("div", { style: styles.card },
+                React.createElement("p", { style: styles.introText }, t.aiIntro),
+                (wins[1] > 0 || wins[2] > 0) && (React.createElement(ScoreBoard, { names: { 1: nameOf(HUMAN), 2: nameOf(AI) }, score: wins })),
+                React.createElement("div", { style: styles.introText }, t.difficultyLabel),
+                React.createElement(DifficultyPicker, { difficulty: difficulty, onPick: setDifficulty, t: t }),
+                React.createElement("div", { style: styles.introText }, t.gameSpeedLabel),
+                React.createElement(SpeedPicker, { speed: speed, onPick: setSpeed, t: t }),
+                React.createElement("div", { style: styles.introText }, t.whoStartsAI),
+                React.createElement("div", { style: styles.row },
+                    React.createElement("button", { style: { ...styles.bigBtn, ...styles.p1Btn }, onClick: () => startMatch(HUMAN) }, nameOf(HUMAN)),
+                    React.createElement("button", { style: { ...styles.bigBtn, ...styles.p2Btn }, onClick: () => startMatch(AI) }, nameOf(AI))),
+                React.createElement("div", { style: styles.row },
+                    (wins[1] > 0 || wins[2] > 0) && (React.createElement("button", { style: styles.linkBtn, onClick: resetScores }, t.resetScores)),
+                    React.createElement("button", { style: styles.linkBtn, onClick: onBack }, t.back)))),
+            (stage === "playing" || stage === "roundOver") && (React.createElement(React.Fragment, null,
+                React.createElement("div", { style: styles.matchBar },
+                    React.createElement("span", { style: styles.matchLabel }, t.roundLabel[gameIndex]),
+                    React.createElement("span", { style: styles.matchScoreText },
+                        matchScore[1],
+                        " - ",
+                        matchScore[2])),
+                React.createElement("div", { style: styles.statusBar },
+                    React.createElement("div", { style: styles.turnPill(stage === "roundOver" ? null : current) }, stage === "roundOver"
+                        ? t.roundOverLabel
+                        : current === AI
+                            ? t.aiThinking
+                            : t.turnOf(nameOf(current))),
+                    stage === "playing" && current === HUMAN && (React.createElement("div", { style: styles.timerPill(timeLeft, SPEED_SECONDS[speed]) }, timeLeft)),
+                    React.createElement("div", { style: styles.counter },
+                        filledCount,
+                        " / ",
+                        TOTAL)),
+                React.createElement(Board, { board: board, selected: selected, lastMove: lastMove, interactive: stage === "playing" && current === HUMAN, onCellClick: (i) => {
+                        if (current !== HUMAN || board[i])
+                            return;
+                        setSelected((prev) => (prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]));
+                    } }),
+                stage === "playing" && current === HUMAN && (React.createElement("div", { style: styles.controls },
+                    React.createElement("div", { style: styles.feedback(info.valid, selected.length) }, selected.length === 0
+                        ? t.chooseCellsHint
+                        : info.valid
+                            ? t.readyToPlace(selected.length)
+                            : info.reason),
+                    React.createElement("div", { style: styles.row },
+                        React.createElement("button", { style: { ...styles.actionBtn, ...(info.valid ? styles.confirmActive : styles.confirmDisabled) }, onClick: confirmMove, disabled: !info.valid }, t.confirmMove),
+                        React.createElement("button", { style: { ...styles.actionBtn, ...styles.ghostBtn }, onClick: clearSelection, disabled: selected.length === 0 }, t.clearSelection)))),
+                stage === "roundOver" && (React.createElement("div", { style: styles.card },
+                    React.createElement("div", { style: styles.resultTitle }, t.lastMarkBy(nameOf(roundLoser))),
+                    React.createElement("div", { style: styles.resultSub }, t.roundWonBy(nameOf(roundLoser === 1 ? 2 : 1))),
+                    React.createElement(ScoreBoard, { names: { 1: nameOf(HUMAN), 2: nameOf(AI) }, score: matchScore }),
+                    !matchDecided && (React.createElement("button", { style: { ...styles.bigBtn, ...styles.neutralBtn }, onClick: nextRound }, t.secondRound)),
+                    matchDecided && (React.createElement(React.Fragment, null,
+                        React.createElement("div", { style: styles.matchWinnerBanner }, isDraw ? t.drawMatch : t.winsMatch(nameOf(matchWinner))),
+                        React.createElement(ScoreBoard, { names: { 1: nameOf(HUMAN), 2: nameOf(AI) }, score: wins }),
+                        wins.draws > 0 && (React.createElement("div", { style: styles.smallNote },
+                            t.drawsLabel,
+                            ": ",
+                            wins.draws)),
+                        React.createElement("button", { style: { ...styles.bigBtn, ...styles.neutralBtn }, onClick: () => setStage("setup") }, t.newMatch)))))))));
+    }
+    // ---------------------------------------------------------------------------
+    // ONLINE (room-based) MODE
+    // ---------------------------------------------------------------------------
+    function OnlineGame({ onBack, lang, session }) {
+        const t = T[lang];
+        const [myName, setMyName] = useState(session && session.name ? session.name : "");
+        const [joinCodeInput, setJoinCodeInput] = useState("");
+        const [roomCode, setRoomCode] = useState("");
+        const [mySlot, setMySlot] = useState(null);
+        const [room, setRoom] = useState(null);
+        const [busy, setBusy] = useState(false);
+        const [error, setError] = useState("");
+        const [copied, setCopied] = useState(false);
+        const [selected, setSelected] = useState([]);
+        const [nowTick, setNowTick] = useState(Date.now());
+        // live-listen to the shared room state
+        useEffect(() => {
+            if (!roomCode)
+                return;
+            const unsubscribe = onSnapshot(doc(db, "rooms", roomCode), (snap) => {
+                if (snap.exists())
+                    setRoom(snap.data());
+            });
+            return () => unsubscribe();
+        }, [roomCode]);
+        // tick for the countdown display
+        useEffect(() => {
+            if (!roomCode)
+                return;
+            const id = setInterval(() => setNowTick(Date.now()), 1000);
+            return () => clearInterval(id);
+        }, [roomCode]);
+        // Local, per-device countdown anchor. We deliberately do NOT compare
+        // room.turnDeadline (set by whichever device's clock made the move)
+        // against this device's own clock — if the two devices' clocks aren't
+        // perfectly in sync, that comparison can read as "already expired" the
+        // instant a new turn arrives, firing the auto-move before the real time
+        // is up. Instead, each device starts its own countdown, on its own
+        // clock, the moment it notices a new turn (new turnDeadline value).
+        const turnAnchorRef = useRef(null); // { key, anchorTime, duration }
+        const [remaining, setRemaining] = useState(null);
+        useEffect(() => {
+            if (!room || room.stage !== "playing" || !room.turnDeadline) {
+                turnAnchorRef.current = null;
+                setRemaining(null);
+                return;
+            }
+            const key = `${room.gameIndex}-${room.current}-${room.turnDeadline}`;
+            if (!turnAnchorRef.current || turnAnchorRef.current.key !== key) {
+                turnAnchorRef.current = {
+                    key,
+                    anchorTime: Date.now(),
+                    duration: SPEED_SECONDS[room.speed] || SPEED_SECONDS.blitz,
+                };
+            }
+            const { anchorTime, duration } = turnAnchorRef.current;
+            const elapsed = Math.floor((Date.now() - anchorTime) / 1000);
+            setRemaining(Math.max(0, duration - elapsed));
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, [room && room.turnDeadline, room && room.stage, room && room.current, room && room.gameIndex, nowTick]);
+        // only the player on turn triggers the timeout auto-move, to avoid double writes
+        useEffect(() => {
+            if (!room || room.stage !== "playing" || !mySlot)
+                return;
+            if (room.current !== mySlot)
+                return;
+            if (remaining === null || remaining > 0)
+                return;
+            const firstEmpty = room.board.findIndex((c) => !c);
+            if (firstEmpty !== -1)
+                onlineApplyMove([firstEmpty]);
+            // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, [remaining]);
+        const onlineInfo = useMemo(() => analyzeSelection(selected, room ? room.board : null, lang), [selected, room, lang]);
+        async function createRoom() {
+            if (!myName.trim())
+                return setError(t.errWriteNameFirst);
+            setBusy(true);
+            const code = genCode();
+            const r = emptyRoom();
+            r.players[1] = myName.trim();
+            if (!(await writeRoom(code, r))) {
+                setError(t.authGenericError);
+                setBusy(false);
+                return;
+            }
+            setRoom(r);
+            setMySlot(1);
+            setRoomCode(code);
+            setError("");
+            setBusy(false);
+        }
+        async function joinRoom() {
+            const code = joinCodeInput.trim().toUpperCase();
+            if (!code)
+                return setError(t.errWriteRoomCode);
+            if (!myName.trim())
+                return setError(t.errWriteNameFirst);
+            setBusy(true);
+            const r = await readRoom(code);
+            if (!r) {
+                setError(t.errRoomNotFound);
+                setBusy(false);
+                return;
+            }
+            if (r.players[2] && r.players[2].trim()) {
+                setError(t.errRoomFull);
+                setBusy(false);
+                return;
+            }
+            r.players[2] = myName.trim();
+            await writeRoom(code, r);
+            setRoom(r);
+            setMySlot(2);
+            setRoomCode(code);
+            setError("");
+            setBusy(false);
+        }
+        function nameOf(p) {
+            const n = room && room.players[p];
+            return withGmBadge(n && n.trim() ? n.trim() : p === 1 ? t.defaultPlayer1 : t.defaultPlayer2);
+        }
+        async function setOnlineSpeed(key) {
+            if (!room)
+                return;
+            const updated = { ...room, speed: key };
+            setRoom(updated);
+            await writeRoom(roomCode, updated);
+        }
+        async function startOnlineMatch(starter) {
+            if (!room)
+                return;
+            const updated = {
+                ...room,
+                initialStarter: starter,
+                gameIndex: 1,
+                matchScore: { 1: 0, 2: 0 },
+                board: Array(TOTAL).fill(null),
+                current: starter,
+                roundLoser: null,
+                lastMove: [],
+                turnDeadline: Date.now() + SPEED_SECONDS[room.speed] * 1000,
+                stage: "playing",
+            };
+            setRoom(updated);
+            await writeRoom(roomCode, updated);
+        }
+        async function onlineApplyMove(cells) {
+            if (!room)
+                return;
+            const next = [...room.board];
+            cells.forEach((i) => (next[i] = room.current));
+            const stillEmpty = next.some((c) => !c);
+            let updated = { ...room, board: next, lastMove: cells };
+            if (!stillEmpty) {
+                const roundWinner = room.current === 1 ? 2 : 1;
+                const newMatchScore = { ...room.matchScore, [roundWinner]: room.matchScore[roundWinner] + 1 };
+                const decided = room.gameIndex === 2;
+                updated = { ...updated, matchScore: newMatchScore, roundLoser: room.current, stage: "roundOver", turnDeadline: null };
+                if (decided) {
+                    if (newMatchScore[1] !== newMatchScore[2]) {
+                        const matchWinner = newMatchScore[1] > newMatchScore[2] ? 1 : 2;
+                        updated.wins = { ...room.wins, [matchWinner]: (room.wins[matchWinner] || 0) + 1 };
+                    }
+                    else {
+                        updated.wins = { ...room.wins, draws: (room.wins.draws || 0) + 1 };
+                    }
+                }
+            }
+            else {
+                const nextCurrent = room.current === 1 ? 2 : 1;
+                updated = { ...updated, current: nextCurrent, turnDeadline: Date.now() + SPEED_SECONDS[room.speed] * 1000 };
+            }
+            setRoom(updated);
+            setSelected([]);
+            await writeRoom(roomCode, updated);
+        }
+        async function confirmOnlineMove() {
+            if (!onlineInfo.valid)
+                return;
+            await onlineApplyMove(selected);
+        }
+        async function nextOnlineRound() {
+            if (!room)
+                return;
+            const nextIndex = room.gameIndex + 1;
+            const starter = starterFor(nextIndex, room.initialStarter);
+            const updated = {
+                ...room,
+                gameIndex: nextIndex,
+                board: Array(TOTAL).fill(null),
+                current: starter,
+                roundLoser: null,
+                lastMove: [],
+                turnDeadline: Date.now() + SPEED_SECONDS[room.speed] * 1000,
+                stage: "playing",
+            };
+            setRoom(updated);
+            await writeRoom(roomCode, updated);
+        }
+        async function newOnlineMatch() {
+            if (!room)
+                return;
+            const updated = {
+                ...room,
+                stage: "lobby",
+                board: Array(TOTAL).fill(null),
+                matchScore: { 1: 0, 2: 0 },
+                gameIndex: 1,
+                roundLoser: null,
+                lastMove: [],
+                turnDeadline: null,
+            };
+            setRoom(updated);
+            await writeRoom(roomCode, updated);
+        }
+        function leaveRoom() {
+            setRoomCode("");
+            setMySlot(null);
+            setRoom(null);
+            setSelected([]);
+            setError("");
+            setCopied(false);
+        }
+        function toggleCell(i) {
+            if (!room || room.board[i])
+                return;
+            if (room.current !== mySlot || room.stage !== "playing")
+                return;
+            setSelected((prev) => (prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]));
+        }
+        async function copyInvite() {
+            const text = t.inviteText(roomCode);
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(text);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                }
+            }
+            catch (e) {
+                // clipboard unavailable — the code is already visible to copy by hand
+            }
+        }
+        const bothPresent = !!(room && room.players[1] && room.players[2] && room.players[1].trim() && room.players[2].trim());
+        const matchDecided = room && room.stage === "roundOver" && room.gameIndex === 2;
+        const isDraw = matchDecided && room.matchScore[1] === room.matchScore[2];
+        return (React.createElement(React.Fragment, null,
+            !roomCode && (React.createElement("div", { style: styles.card },
+                React.createElement("p", { style: styles.introText }, t.onlineIntro),
+                React.createElement("div", { style: styles.nameField },
+                    React.createElement("label", { style: styles.nameLabel(styles.p1Btn.background) }, t.yourNameLabel),
+                    React.createElement("input", { style: styles.nameInput, type: "text", maxLength: 16, placeholder: t.yourNamePlaceholder, value: myName, onChange: (e) => setMyName(e.target.value) })),
+                error && React.createElement("div", { style: styles.errorText }, error),
+                React.createElement("button", { style: { ...styles.bigBtn, ...styles.p1Btn, opacity: busy ? 0.6 : 1 }, onClick: createRoom, disabled: busy }, t.createRoomBtn),
+                React.createElement("div", { style: styles.row },
+                    React.createElement("input", { style: styles.nameInput, type: "text", maxLength: 4, placeholder: t.roomCodePlaceholder, value: joinCodeInput, onChange: (e) => setJoinCodeInput(e.target.value.toUpperCase()) }),
+                    React.createElement("button", { style: { ...styles.bigBtn, ...styles.p2Btn, opacity: busy ? 0.6 : 1 }, onClick: joinRoom, disabled: busy }, t.joinWithCode)),
+                React.createElement("button", { style: styles.linkBtn, onClick: onBack }, t.back))),
+            roomCode && room && room.stage === "lobby" && (React.createElement("div", { style: styles.card },
+                React.createElement("div", { style: styles.roomCodeBox },
+                    React.createElement("span", { style: styles.introText }, t.roomCodeShareLabel),
+                    React.createElement("span", { style: styles.roomCodeText }, roomCode),
+                    React.createElement("button", { style: styles.copyBtn, onClick: copyInvite }, copied ? t.copiedLabel : t.copyInviteBtn)),
+                React.createElement("div", { style: styles.waitingNote }, bothPresent ? t.bothInRoom(nameOf(1), nameOf(2)) : t.waitingFriend),
+                React.createElement("div", { style: styles.introText }, t.gameSpeedLabel),
+                React.createElement(SpeedPicker, { speed: room.speed, onPick: setOnlineSpeed, t: t }),
+                bothPresent && (React.createElement(React.Fragment, null,
+                    React.createElement("div", { style: styles.introText }, t.whoStartsLabel),
+                    React.createElement("div", { style: styles.row },
+                        React.createElement("button", { style: { ...styles.bigBtn, ...styles.p1Btn }, onClick: () => startOnlineMatch(1) }, nameOf(1)),
+                        React.createElement("button", { style: { ...styles.bigBtn, ...styles.p2Btn }, onClick: () => startOnlineMatch(2) }, nameOf(2))))),
+                React.createElement("button", { style: styles.linkBtn, onClick: leaveRoom }, t.leaveRoomBtn))),
+            roomCode && room && (room.stage === "playing" || room.stage === "roundOver") && (React.createElement(React.Fragment, null,
+                React.createElement("div", { style: styles.matchBar },
+                    React.createElement("span", { style: styles.matchLabel }, t.roundLabel[room.gameIndex]),
+                    React.createElement("span", { style: styles.matchScoreText },
+                        room.matchScore[1],
+                        " - ",
+                        room.matchScore[2])),
+                React.createElement("div", { style: styles.statusBar },
+                    React.createElement("div", { style: styles.turnPill(room.stage === "roundOver" ? null : room.current) }, room.stage === "roundOver"
+                        ? t.roundOverLabel
+                        : room.current === mySlot
+                            ? t.yourTurnLabel
+                            : t.turnOf(nameOf(room.current))),
+                    room.stage === "playing" && remaining !== null && (React.createElement("div", { style: styles.timerPill(remaining, SPEED_SECONDS[room.speed]) }, remaining)),
+                    React.createElement("div", { style: styles.counter },
+                        room.board.filter(Boolean).length,
+                        " / ",
+                        TOTAL)),
+                React.createElement(Board, { board: room.board, selected: selected, lastMove: room.lastMove, interactive: room.stage === "playing" && room.current === mySlot, onCellClick: toggleCell }),
+                room.stage === "playing" && (React.createElement("div", { style: styles.controls },
+                    React.createElement("div", { style: styles.feedback(onlineInfo.valid, selected.length) }, room.current !== mySlot
+                        ? t.waitingMove(nameOf(room.current))
+                        : selected.length === 0
+                            ? t.chooseCellsHint
+                            : onlineInfo.valid
+                                ? t.readyToPlace(selected.length)
+                                : onlineInfo.reason),
+                    room.current === mySlot && (React.createElement("div", { style: styles.row },
+                        React.createElement("button", { style: { ...styles.actionBtn, ...(onlineInfo.valid ? styles.confirmActive : styles.confirmDisabled) }, onClick: confirmOnlineMove, disabled: !onlineInfo.valid }, t.confirmMove),
+                        React.createElement("button", { style: { ...styles.actionBtn, ...styles.ghostBtn }, onClick: () => setSelected([]), disabled: selected.length === 0 }, t.clearSelection))))),
+                room.stage === "roundOver" && (React.createElement("div", { style: styles.card },
+                    React.createElement("div", { style: styles.resultTitle }, t.lastMarkBy(nameOf(room.roundLoser))),
+                    React.createElement("div", { style: styles.resultSub }, t.roundWonBy(nameOf(room.roundLoser === 1 ? 2 : 1))),
+                    React.createElement(ScoreBoard, { names: { 1: nameOf(1), 2: nameOf(2) }, score: room.matchScore }),
+                    !matchDecided && (React.createElement("button", { style: { ...styles.bigBtn, ...styles.neutralBtn }, onClick: nextOnlineRound }, t.secondRound)),
+                    matchDecided && (React.createElement(React.Fragment, null,
+                        React.createElement("div", { style: styles.matchWinnerBanner }, isDraw
+                            ? t.drawMatch
+                            : t.winsMatch(nameOf(room.matchScore[1] > room.matchScore[2] ? 1 : 2))),
+                        room.wins && React.createElement(ScoreBoard, { names: { 1: nameOf(1), 2: nameOf(2) }, score: room.wins }),
+                        room.wins && room.wins.draws > 0 && (React.createElement("div", { style: styles.smallNote },
+                            t.drawsLabel,
+                            ": ",
+                            room.wins.draws)),
+                        React.createElement("button", { style: { ...styles.bigBtn, ...styles.neutralBtn }, onClick: newOnlineMatch }, t.newMatch))),
+                    React.createElement("button", { style: styles.linkBtn, onClick: leaveRoom }, t.leaveRoomBtn)))))));
+    }
+    // ---------------------------------------------------------------------------
+    // SHARED PRESENTATIONAL COMPONENTS
+    // ---------------------------------------------------------------------------
+    function Board({ board, selected, lastMove, interactive, onCellClick }) {
+        return (React.createElement("div", { style: styles.grid }, board.map((val, i) => {
+            const isSelected = selected.includes(i);
+            const isLast = lastMove.includes(i);
+            const filled = !!val;
+            return (React.createElement("div", { key: i, className: `cell${filled ? " filled" : ""}`, style: styles.cellStyle(val, isSelected, isLast, interactive), onClick: () => interactive && !filled && onCellClick(i), role: "button", tabIndex: interactive && !filled ? 0 : -1, onKeyDown: (e) => {
+                    if (interactive && !filled && (e.key === "Enter" || e.key === " ")) {
+                        e.preventDefault();
+                        onCellClick(i);
+                    }
+                } }, val === 1 ? "●" : val === 2 ? "■" : ""));
+        })));
+    }
+    function ScoreBoard({ names, score }) {
+        return (React.createElement("div", { style: styles.scoreBoard },
+            React.createElement("div", { style: styles.scoreItem(styles.p1Btn.background) },
+                React.createElement("span", null, names[1]),
+                React.createElement("strong", null, score[1])),
+            React.createElement("div", { style: styles.scoreItem(styles.p2Btn.background) },
+                React.createElement("span", null, names[2]),
+                React.createElement("strong", null, score[2]))));
+    }
+    function SpeedPicker({ speed, onPick, t }) {
+        return (React.createElement("div", { style: styles.speedRow }, Object.keys(SPEED_SECONDS).map((key) => (React.createElement("button", { key: key, style: styles.speedBtn(speed === key), onClick: () => onPick(key) },
+            t.speedLabel[key],
+            " \u00B7 ",
+            SPEED_SECONDS[key],
+            t.secondsSuffix)))));
+    }
+    // ---------------------------------------------------------------------------
+    // STYLES — warm carved-wood board game palette (brass, walnut, ink, clay)
+    // ---------------------------------------------------------------------------
+    const COLORS = {
+        bg: "#241a13",
+        frame: "#2f2318",
+        card: "#3a2c1e",
+        cream: "#f1e6d0",
+        gold: "#e8b34a",
+        goldDim: "rgba(232,179,74,0.35)",
+        p1: "#3d6a8a",
+        p2: "#a4462f",
+        textMuted: "#c9b892",
+        danger: "#d1553f",
+        ok: "#5a9b6a",
+    };
+    const font = "'Almarai', sans-serif";
+    const styles = {
+        page: {
+            minHeight: "100vh",
+            background: `radial-gradient(circle at 50% 0%, ${COLORS.frame} 0%, ${COLORS.bg} 70%)`,
+            fontFamily: font,
+            color: COLORS.cream,
+            padding: "24px 14px 48px",
+        },
+        frame: { maxWidth: 460, margin: "0 auto" },
+        langRow: { display: "flex", justifyContent: "center", gap: 8, marginBottom: 12 },
+        langBtn: (active) => ({
+            border: `1px solid ${active ? COLORS.gold : COLORS.goldDim}`,
+            background: active ? COLORS.gold : "transparent",
+            color: active ? "#241a13" : COLORS.cream,
+            borderRadius: 999,
+            padding: "6px 16px",
+            fontFamily: font,
+            fontWeight: 700,
+            fontSize: 12,
+            cursor: "pointer",
+        }),
+        eyebrow: {
+            textAlign: "center",
+            color: COLORS.gold,
+            fontWeight: 700,
+            letterSpacing: 1,
+            fontSize: 13,
+            marginBottom: 4,
+        },
+        title: { textAlign: "center", fontWeight: 800, fontSize: 30, margin: "0 0 18px" },
+        card: {
+            background: COLORS.card,
+            borderRadius: 18,
+            padding: 18,
+            boxShadow: `inset 0 0 0 1px ${COLORS.goldDim}`,
+            marginBottom: 16,
+        },
+        introText: { color: COLORS.textMuted, fontSize: 14, lineHeight: 1.7, margin: "6px 0" },
+        row: { display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" },
+        bigBtn: {
+            flex: 1,
+            minWidth: 130,
+            border: "none",
+            borderRadius: 12,
+            padding: "13px 14px",
+            fontFamily: font,
+            fontWeight: 800,
+            fontSize: 15,
+            color: "#fdf6e8",
+            cursor: "pointer",
+        },
+        p1Btn: { background: COLORS.p1 },
+        p2Btn: { background: COLORS.p2 },
+        neutralBtn: { background: "#6b5638", width: "100%" },
+        linkBtn: {
+            background: "transparent",
+            border: "none",
+            color: COLORS.gold,
+            fontFamily: font,
+            fontWeight: 700,
+            fontSize: 13,
+            cursor: "pointer",
+            padding: "8px 4px",
+        },
+        nameField: { marginTop: 12 },
+        nameLabel: (color) => ({
+            display: "block",
+            fontSize: 12,
+            fontWeight: 700,
+            marginBottom: 6,
+            color,
+        }),
+        nameInput: {
+            width: "100%",
+            background: "#241a13",
+            border: `1px solid ${COLORS.goldDim}`,
+            borderRadius: 10,
+            padding: "10px 12px",
+            color: COLORS.cream,
+            fontFamily: font,
+            fontSize: 14,
+            outline: "none",
+        },
+        smallNote: { color: COLORS.textMuted, fontSize: 12, marginTop: 8, lineHeight: 1.6 },
+        errorText: { color: COLORS.danger, fontSize: 13, fontWeight: 700, marginTop: 8 },
+        matchBar: {
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "0 4px",
+            marginBottom: 8,
+        },
+        matchLabel: { color: COLORS.gold, fontWeight: 700, fontSize: 13 },
+        matchScoreText: { fontWeight: 800, fontSize: 16 },
+        statusBar: { display: "flex", alignItems: "center", gap: 10, padding: "0 4px", marginBottom: 4 },
+        turnPill: (player) => ({
+            flex: 1,
+            textAlign: "center",
+            padding: "8px 10px",
+            borderRadius: 999,
+            fontWeight: 800,
+            fontSize: 13,
+            background: player === 1 ? COLORS.p1 : player === 2 ? COLORS.p2 : "#6b5638",
+            color: "#fdf6e8",
+        }),
+        timerPill: (t, total) => ({
+            width: 40,
+            height: 40,
+            borderRadius: "50%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: 800,
+            fontSize: 15,
+            border: `2px solid ${t <= Math.ceil(total / 3) ? COLORS.danger : COLORS.gold}`,
+            color: t <= Math.ceil(total / 3) ? COLORS.danger : COLORS.gold,
+        }),
+        counter: { color: COLORS.textMuted, fontSize: 12, minWidth: 46, textAlign: "left" },
+        grid: {
+            display: "grid",
+            gridTemplateColumns: `repeat(${N}, 1fr)`,
+            gap: 10,
+            maxWidth: 380,
+            margin: "16px auto",
+            padding: 14,
+            background: "#1c130c",
+            borderRadius: 18,
+            boxShadow: `inset 0 0 0 2px ${COLORS.goldDim}`,
+        },
+        cellStyle: (val, isSelected, isLast, interactive) => ({
+            aspectRatio: "1 / 1",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 26,
+            fontWeight: 800,
+            borderRadius: 10,
+            cursor: interactive && !val ? "pointer" : "default",
+            userSelect: "none",
+            background: val === 1 ? COLORS.p1 : val === 2 ? COLORS.p2 : isSelected ? COLORS.gold : COLORS.cream,
+            color: val ? "#fdf6e8" : "#3a2c1e",
+            boxShadow: isLast
+                ? `0 0 0 3px ${COLORS.gold}`
+                : isSelected
+                    ? `0 0 0 3px rgba(232,179,74,0.6)`
+                    : "none",
+        }),
+        controls: { padding: "0 4px" },
+        feedback: (valid, len) => ({
+            fontSize: 13,
+            fontWeight: 700,
+            color: len === 0 ? COLORS.textMuted : valid ? COLORS.ok : COLORS.danger,
+            marginBottom: 8,
+            minHeight: 18,
+        }),
+        actionBtn: {
+            flex: 1,
+            border: "none",
+            borderRadius: 12,
+            padding: "12px 14px",
+            fontFamily: font,
+            fontWeight: 800,
+            fontSize: 14,
+            cursor: "pointer",
+        },
+        confirmActive: { background: COLORS.ok, color: "#fdf6e8" },
+        confirmDisabled: { background: "#4a4032", color: COLORS.textMuted, cursor: "not-allowed" },
+        ghostBtn: { background: "transparent", border: `1px solid ${COLORS.goldDim}`, color: COLORS.cream },
+        resultTitle: { fontWeight: 800, fontSize: 16, marginBottom: 4 },
+        resultSub: { color: COLORS.textMuted, fontSize: 13, marginBottom: 10 },
+        matchWinnerBanner: {
+            background: COLORS.gold,
+            color: "#241a13",
+            fontWeight: 800,
+            textAlign: "center",
+            borderRadius: 12,
+            padding: "10px 12px",
+            margin: "10px 0",
+        },
+        scoreBoard: { display: "flex", gap: 10, margin: "10px 0" },
+        scoreItem: (color) => ({
+            flex: 1,
+            background: "#241a13",
+            borderRadius: 10,
+            padding: "8px 10px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            fontSize: 13,
+            fontWeight: 700,
+            boxShadow: `inset 0 0 0 2px ${color}`,
+        }),
+        speedRow: { display: "flex", gap: 8, margin: "6px 0 4px" },
+        speedBtn: (active) => ({
+            flex: 1,
+            border: `1px solid ${active ? COLORS.gold : COLORS.goldDim}`,
+            background: active ? COLORS.gold : "transparent",
+            color: active ? "#241a13" : COLORS.cream,
+            borderRadius: 10,
+            padding: "8px 6px",
+            fontFamily: font,
+            fontWeight: 700,
+            fontSize: 12,
+            cursor: "pointer",
+        }),
+        roomCodeBox: {
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 6,
+            background: "#241a13",
+            borderRadius: 12,
+            padding: "14px 12px",
+            marginBottom: 10,
+        },
+        roomCodeText: { fontSize: 30, fontWeight: 800, letterSpacing: 6, color: COLORS.gold },
+        copyBtn: {
+            marginTop: 6,
+            border: "none",
+            borderRadius: 999,
+            padding: "8px 16px",
+            background: COLORS.gold,
+            color: "#241a13",
+            fontFamily: font,
+            fontWeight: 800,
+            fontSize: 12,
+            cursor: "pointer",
+        },
+        waitingNote: { textAlign: "center", color: COLORS.textMuted, fontSize: 13, margin: "4px 0 12px" },
+    };
+    ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App, null));
+} // end boot()
+if (window.fb) {
+    boot(window.fb.db, window.fb.doc, window.fb.getDoc, window.fb.setDoc, window.fb.deleteDoc, window.fb.onSnapshot);
+}
+else {
+    showBootError(window.__fbError || "فشل تحميل Firebase.");
 }
 
-// ---------------------------------------------------------------------------
-// SHARED PRESENTATIONAL COMPONENTS
-// ---------------------------------------------------------------------------
-function Board({ board, selected, lastMove, interactive, onCellClick }) {
-  return (
-    <div style={styles.grid}>
-      {board.map((val, i) => {
-        const isSelected = selected.includes(i);
-        const isLast = lastMove.includes(i);
-        const filled = !!val;
-        return (
-          <div
-            key={i}
-            className={`cell${filled ? " filled" : ""}`}
-            style={styles.cellStyle(val, isSelected, isLast, interactive)}
-            onClick={() => interactive && !filled && onCellClick(i)}
-            role="button"
-            tabIndex={interactive && !filled ? 0 : -1}
-            onKeyDown={(e) => {
-              if (interactive && !filled && (e.key === "Enter" || e.key === " ")) {
-                e.preventDefault();
-                onCellClick(i);
-              }
-            }}
-          >
-            {val === 1 ? "●" : val === 2 ? "■" : ""}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function ScoreBoard({ names, score }) {
-  return (
-    <div style={styles.scoreBoard}>
-      <div style={styles.scoreItem(styles.p1Btn.background)}>
-        <span>{names[1]}</span>
-        <strong>{score[1]}</strong>
-      </div>
-      <div style={styles.scoreItem(styles.p2Btn.background)}>
-        <span>{names[2]}</span>
-        <strong>{score[2]}</strong>
-      </div>
-    </div>
-  );
-}
-
-function SpeedPicker({ speed, onPick, t }) {
-  return (
-    <div style={styles.speedRow}>
-      {Object.keys(SPEED_SECONDS).map((key) => (
-        <button key={key} style={styles.speedBtn(speed === key)} onClick={() => onPick(key)}>
-          {t.speedLabel[key]} · {SPEED_SECONDS[key]}{t.secondsSuffix}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// STYLES — warm carved-wood board game palette (brass, walnut, ink, clay)
-// ---------------------------------------------------------------------------
-const COLORS = {
-  bg: "#241a13",
-  frame: "#2f2318",
-  card: "#3a2c1e",
-  cream: "#f1e6d0",
-  gold: "#e8b34a",
-  goldDim: "rgba(232,179,74,0.35)",
-  p1: "#3d6a8a",
-  p2: "#a4462f",
-  textMuted: "#c9b892",
-  danger: "#d1553f",
-  ok: "#5a9b6a",
-};
-
-const font = "'Almarai', sans-serif";
-
-const styles = {
-  page: {
-    minHeight: "100vh",
-    background: `radial-gradient(circle at 50% 0%, ${COLORS.frame} 0%, ${COLORS.bg} 70%)`,
-    fontFamily: font,
-    color: COLORS.cream,
-    padding: "24px 14px 48px",
-  },
-  frame: { maxWidth: 460, margin: "0 auto" },
-  langRow: { display: "flex", justifyContent: "center", gap: 8, marginBottom: 12 },
-  langBtn: (active) => ({
-    border: `1px solid ${active ? COLORS.gold : COLORS.goldDim}`,
-    background: active ? COLORS.gold : "transparent",
-    color: active ? "#241a13" : COLORS.cream,
-    borderRadius: 999,
-    padding: "6px 16px",
-    fontFamily: font,
-    fontWeight: 700,
-    fontSize: 12,
-    cursor: "pointer",
-  }),
-  eyebrow: {
-    textAlign: "center",
-    color: COLORS.gold,
-    fontWeight: 700,
-    letterSpacing: 1,
-    fontSize: 13,
-    marginBottom: 4,
-  },
-  title: { textAlign: "center", fontWeight: 800, fontSize: 30, margin: "0 0 18px" },
-  card: {
-    background: COLORS.card,
-    borderRadius: 18,
-    padding: 18,
-    boxShadow: `inset 0 0 0 1px ${COLORS.goldDim}`,
-    marginBottom: 16,
-  },
-  introText: { color: COLORS.textMuted, fontSize: 14, lineHeight: 1.7, margin: "6px 0" },
-  row: { display: "flex", gap: 10, marginTop: 10, flexWrap: "wrap" },
-  bigBtn: {
-    flex: 1,
-    minWidth: 130,
-    border: "none",
-    borderRadius: 12,
-    padding: "13px 14px",
-    fontFamily: font,
-    fontWeight: 800,
-    fontSize: 15,
-    color: "#fdf6e8",
-    cursor: "pointer",
-  },
-  p1Btn: { background: COLORS.p1 },
-  p2Btn: { background: COLORS.p2 },
-  neutralBtn: { background: "#6b5638", width: "100%" },
-  linkBtn: {
-    background: "transparent",
-    border: "none",
-    color: COLORS.gold,
-    fontFamily: font,
-    fontWeight: 700,
-    fontSize: 13,
-    cursor: "pointer",
-    padding: "8px 4px",
-  },
-  nameField: { marginTop: 12 },
-  nameLabel: (color) => ({
-    display: "block",
-    fontSize: 12,
-    fontWeight: 700,
-    marginBottom: 6,
-    color,
-  }),
-  nameInput: {
-    width: "100%",
-    background: "#241a13",
-    border: `1px solid ${COLORS.goldDim}`,
-    borderRadius: 10,
-    padding: "10px 12px",
-    color: COLORS.cream,
-    fontFamily: font,
-    fontSize: 14,
-    outline: "none",
-  },
-  smallNote: { color: COLORS.textMuted, fontSize: 12, marginTop: 8, lineHeight: 1.6 },
-  errorText: { color: COLORS.danger, fontSize: 13, fontWeight: 700, marginTop: 8 },
-
-  matchBar: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "0 4px",
-    marginBottom: 8,
-  },
-  matchLabel: { color: COLORS.gold, fontWeight: 700, fontSize: 13 },
-  matchScoreText: { fontWeight: 800, fontSize: 16 },
-
-  statusBar: { display: "flex", alignItems: "center", gap: 10, padding: "0 4px", marginBottom: 4 },
-  turnPill: (player) => ({
-    flex: 1,
-    textAlign: "center",
-    padding: "8px 10px",
-    borderRadius: 999,
-    fontWeight: 800,
-    fontSize: 13,
-    background: player === 1 ? COLORS.p1 : player === 2 ? COLORS.p2 : "#6b5638",
-    color: "#fdf6e8",
-  }),
-  timerPill: (t, total) => ({
-    width: 40,
-    height: 40,
-    borderRadius: "50%",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontWeight: 800,
-    fontSize: 15,
-    border: `2px solid ${t <= Math.ceil(total / 3) ? COLORS.danger : COLORS.gold}`,
-    color: t <= Math.ceil(total / 3) ? COLORS.danger : COLORS.gold,
-  }),
-  counter: { color: COLORS.textMuted, fontSize: 12, minWidth: 46, textAlign: "left" },
-
-  grid: {
-    display: "grid",
-    gridTemplateColumns: `repeat(${N}, 1fr)`,
-    gap: 10,
-    maxWidth: 380,
-    margin: "16px auto",
-    padding: 14,
-    background: "#1c130c",
-    borderRadius: 18,
-    boxShadow: `inset 0 0 0 2px ${COLORS.goldDim}`,
-  },
-  cellStyle: (val, isSelected, isLast, interactive) => ({
-    aspectRatio: "1 / 1",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 26,
-    fontWeight: 800,
-    borderRadius: 10,
-    cursor: interactive && !val ? "pointer" : "default",
-    userSelect: "none",
-    background: val === 1 ? COLORS.p1 : val === 2 ? COLORS.p2 : isSelected ? COLORS.gold : COLORS.cream,
-    color: val ? "#fdf6e8" : "#3a2c1e",
-    boxShadow: isLast
-      ? `0 0 0 3px ${COLORS.gold}`
-      : isSelected
-      ? `0 0 0 3px rgba(232,179,74,0.6)`
-      : "none",
-  }),
-
-  controls: { padding: "0 4px" },
-  feedback: (valid, len) => ({
-    fontSize: 13,
-    fontWeight: 700,
-    color: len === 0 ? COLORS.textMuted : valid ? COLORS.ok : COLORS.danger,
-    marginBottom: 8,
-    minHeight: 18,
-  }),
-  actionBtn: {
-    flex: 1,
-    border: "none",
-    borderRadius: 12,
-    padding: "12px 14px",
-    fontFamily: font,
-    fontWeight: 800,
-    fontSize: 14,
-    cursor: "pointer",
-  },
-  confirmActive: { background: COLORS.ok, color: "#fdf6e8" },
-  confirmDisabled: { background: "#4a4032", color: COLORS.textMuted, cursor: "not-allowed" },
-  ghostBtn: { background: "transparent", border: `1px solid ${COLORS.goldDim}`, color: COLORS.cream },
-
-  resultTitle: { fontWeight: 800, fontSize: 16, marginBottom: 4 },
-  resultSub: { color: COLORS.textMuted, fontSize: 13, marginBottom: 10 },
-  matchWinnerBanner: {
-    background: COLORS.gold,
-    color: "#241a13",
-    fontWeight: 800,
-    textAlign: "center",
-    borderRadius: 12,
-    padding: "10px 12px",
-    margin: "10px 0",
-  },
-
-  scoreBoard: { display: "flex", gap: 10, margin: "10px 0" },
-  scoreItem: (color) => ({
-    flex: 1,
-    background: "#241a13",
-    borderRadius: 10,
-    padding: "8px 10px",
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    fontSize: 13,
-    fontWeight: 700,
-    boxShadow: `inset 0 0 0 2px ${color}`,
-  }),
-
-  speedRow: { display: "flex", gap: 8, margin: "6px 0 4px" },
-  speedBtn: (active) => ({
-    flex: 1,
-    border: `1px solid ${active ? COLORS.gold : COLORS.goldDim}`,
-    background: active ? COLORS.gold : "transparent",
-    color: active ? "#241a13" : COLORS.cream,
-    borderRadius: 10,
-    padding: "8px 6px",
-    fontFamily: font,
-    fontWeight: 700,
-    fontSize: 12,
-    cursor: "pointer",
-  }),
-
-  roomCodeBox: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: 6,
-    background: "#241a13",
-    borderRadius: 12,
-    padding: "14px 12px",
-    marginBottom: 10,
-  },
-  roomCodeText: { fontSize: 30, fontWeight: 800, letterSpacing: 6, color: COLORS.gold },
-  copyBtn: {
-    marginTop: 6,
-    border: "none",
-    borderRadius: 999,
-    padding: "8px 16px",
-    background: COLORS.gold,
-    color: "#241a13",
-    fontFamily: font,
-    fontWeight: 800,
-    fontSize: 12,
-    cursor: "pointer",
-  },
-  waitingNote: { textAlign: "center", color: COLORS.textMuted, fontSize: 13, margin: "4px 0 12px" },
-};
-
-      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
-      } // end boot()
-
-      if (window.fb) {
-        boot(window.fb.db, window.fb.doc, window.fb.getDoc, window.fb.setDoc, window.fb.deleteDoc, window.fb.onSnapshot);
-      } else {
-        window.addEventListener(
-          "fb-ready",
-          function () {
-            boot(window.fb.db, window.fb.doc, window.fb.getDoc, window.fb.setDoc, window.fb.deleteDoc, window.fb.onSnapshot);
-          },
-          { once: true }
-        );
-        window.addEventListener(
-          "fb-error",
-          function (e) {
-            showBootError((e.detail) || "فشل تحميل Firebase.");
-          },
-          { once: true }
-        );
-        setTimeout(function () {
-          if (!window.fb && !document.getElementById("root").hasChildNodes()) {
-            showBootError("انتهت مهلة الانتظار (أكثر من ٨ ثوانٍ) بدون استجابة من Firebase.");
-          }
-        }, 8000);
-      }
     </script>
   </body>
 </html>
